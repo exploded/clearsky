@@ -40,6 +40,9 @@ cp "$DEPLOY_SRC/clearsky" "$DEPLOY_DIR/clearsky"
 chmod +x "$DEPLOY_DIR/clearsky"
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DEPLOY_DIR"
 
+echo "[deploy] Enabling service on boot..."
+systemctl enable clearsky
+
 echo "[deploy] Starting service..."
 systemctl start clearsky
 
