@@ -1,0 +1,62 @@
+#!/bin/bash
+# /usr/local/bin/deploy-clearsky
+# Runs as root (via sudo) during GitHub Actions deployments.
+#
+# To update this script on the server, include scripts/deploy-clearsky in the SCP
+# bundle - it will self-update and re-exec before doing anything else.
+#
+# clearsky embeds its templates, static assets, migrations and tzdata into the
+# binary, so the only artifact to install is the binary itself.
+
+set -e
+
+DEPLOY_SRC="${1:-/tmp/clearsky-deploy}"
+DEPLOY_DIR=/var/www/clearsky
+
+# Self-update: if the bundle contains a newer version of this script, install
+# it and re-exec so the rest of the deployment runs with the updated logic.
+BUNDLE_SCRIPT="$DEPLOY_SRC/scripts/deploy-clearsky"
+if [ -f "$BUNDLE_SCRIPT" ] && ! diff -q /usr/local/bin/deploy-clearsky "$BUNDLE_SCRIPT" > /dev/null 2>&1; then
+    echo "[deploy] Updating deploy script from bundle..."
+    install -m 755 "$BUNDLE_SCRIPT" /usr/local/bin/deploy-clearsky
+    exec /usr/local/bin/deploy-clearsky "$@"
+fi
+
+# Read the service owner from the installed unit - no hardcoded username.
+SERVICE_USER=$(systemctl show clearsky --property=User --value)
+SERVICE_GROUP=$(systemctl show clearsky --property=Group --value)
+
+if [ -z "$SERVICE_USER" ]; then
+    echo "[deploy] ERROR: Could not read User from clearsky.service"
+    exit 1
+fi
+
+echo "[deploy] Stopping service..."
+systemctl stop clearsky || true
+
+echo "[deploy] Installing binary to $DEPLOY_DIR/clearsky (owner: $SERVICE_USER:$SERVICE_GROUP)..."
+rm -f "$DEPLOY_DIR/clearsky"
+cp "$DEPLOY_SRC/clearsky" "$DEPLOY_DIR/clearsky"
+chmod +x "$DEPLOY_DIR/clearsky"
+chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DEPLOY_DIR"
+
+echo "[deploy] Starting service..."
+systemctl start clearsky
+
+echo "[deploy] Verifying service is active..."
+for i in 1 2 3 4 5; do
+    if systemctl is-active --quiet clearsky; then
+        break
+    fi
+    sleep 1
+done
+if ! systemctl is-active --quiet clearsky; then
+    echo "[deploy] ERROR: Service failed to start. Status:"
+    systemctl status clearsky --no-pager --lines=30
+    exit 1
+fi
+
+echo "[deploy] Cleaning up..."
+rm -rf "$DEPLOY_SRC"
+
+echo "[deploy] Done - clearsky is running."

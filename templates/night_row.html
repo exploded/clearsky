@@ -1,0 +1,12 @@
+{{define "night_row"}}<tr class="{{if .GO}}go{{else}}nogo{{end}}">
+  <td class="date">{{.DateLabel}}</td>
+  <td><span class="badge {{if .GO}}badge-go{{else}}badge-nogo{{end}}">{{.DecisionLabel}}</span></td>
+  <td class="num">{{.Score}}</td>
+  <td class="reason">{{.Reason}}</td>
+  <td class="src">{{.Source}}</td>
+  <td class="num">avg {{.CloudAvg}}% · peak {{.CloudMax}}%</td>
+  <td class="num">{{printf "%.1f" .RainMm}}mm · {{.RainProb}}%</td>
+  <td class="num">{{.MoonPct}}%</td>
+  <td class="dark">{{.Dusk}} → {{.Dawn}}</td>
+  <td class="imaged">{{if .ImageURL}}<a href="{{.ImageURL}}" target="_blank" rel="noopener">{{.Imaged}}</a>{{else}}{{.Imaged}}{{end}}</td>
+</tr>{{end}}

@@ -1,0 +1,25 @@
+{{define "base"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://unpkg.com/htmx.org@2.0.3" crossorigin="anonymous"></script>
+</head>
+<body>
+  <header>
+    <h1>🔭 clearsky</h1>
+    <p class="sub">Nightly astrophotography go/no-go — Donvale, VIC</p>
+    <form method="post" action="/run" class="run">
+      <button type="submit">Run tonight's check now</button>
+    </form>
+  </header>
+  <main>
+    {{template "content" .}}
+  </main>
+  <footer>
+    <p>Images published at <a href="https://deepspaceplace.com/images" target="_blank" rel="noopener">deepspaceplace.com/images</a></p>
+  </footer>
+</body>
+</html>{{end}}

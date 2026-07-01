@@ -1,0 +1,49 @@
+{{define "content"}}
+{{with .Tonight}}
+<section class="tonight">
+  <h2>Tonight — visual check <span class="mode">decision source: {{.SourceMode}}</span></h2>
+  <p class="hint">The decision uses live forecast data; these images are for an eyeball sanity-check. More at <a href="{{.DeepSpaceURL}}" target="_blank" rel="noopener">deepspaceplace.com/weather</a>.</p>
+  <div class="panels">
+    <figure><figcaption>Clear Outside</figcaption><img src="{{.ClearOutsideImg}}" alt="Clear Outside forecast" loading="lazy"></figure>
+    <figure><figcaption>Skippy Sky — total cloud</figcaption><img src="{{.SkippyImg}}" alt="Skippy Sky total cloud" loading="lazy"></figure>
+    <figure><figcaption>yr.no meteogram</figcaption><img src="{{.YrMeteogramURL}}" alt="yr.no meteogram" loading="lazy"></figure>
+  </div>
+</section>
+{{end}}
+{{if not .Nights}}
+  <p class="empty">No nights logged yet. Click “Run tonight's check now” above, or wait for the 6&nbsp;PM check.</p>
+{{end}}
+<table class="nights">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Decision</th>
+      <th>Score</th>
+      <th>Reason</th>
+      <th>Source</th>
+      <th>Cloud</th>
+      <th>Rain</th>
+      <th>Moon</th>
+      <th>Darkness</th>
+      <th>Imaged?</th>
+    </tr>
+  </thead>
+  <tbody id="nights-tbody">
+    {{template "rows" .}}
+  </tbody>
+</table>
+<div id="load-more-wrap" class="load-more">
+  {{if .NextBefore}}
+    <button hx-get="/nights/rows?before={{.NextBefore}}" hx-target="#nights-tbody" hx-swap="beforeend">Load older nights</button>
+  {{end}}
+</div>
+{{end}}
+
+{{define "rows"}}
+{{range .Nights}}{{template "night_row" .}}{{end}}
+<div id="load-more-wrap" hx-swap-oob="true" class="load-more">
+  {{if .NextBefore}}
+    <button hx-get="/nights/rows?before={{.NextBefore}}" hx-target="#nights-tbody" hx-swap="beforeend">Load older nights</button>
+  {{end}}
+</div>
+{{end}}
