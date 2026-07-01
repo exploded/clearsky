@@ -28,6 +28,7 @@ type App struct {
 	loc     *time.Location
 	tmpl    *template.Template
 	tonight TonightPanel
+	proxy   *imgProxy
 }
 
 // TonightPanel holds the external "eyeball" images embedded at the top of the page.
@@ -45,13 +46,21 @@ func NewApp(q *store.Queries, runner *Runner, loc *time.Location, cfg Config) (*
 	if err != nil {
 		return nil, err
 	}
+	// The panel images are served through our own origin (/img/{source}) to avoid
+	// mixed-content and third-party requests from the browser; the proxy holds the
+	// real upstream URLs in a whitelist. DeepSpaceURL stays a plain external link.
+	proxy := newImgProxy(map[string]string{
+		"clearoutside": cfg.ClearOutsideImg,
+		"skippy":       cfg.SkippyImg,
+		"yr":           cfg.YrMeteogramURL,
+	})
 	return &App{
-		q: q, runner: runner, loc: loc, tmpl: tmpl,
+		q: q, runner: runner, loc: loc, tmpl: tmpl, proxy: proxy,
 		tonight: TonightPanel{
 			SourceMode:      cfg.Source,
-			ClearOutsideImg: cfg.ClearOutsideImg,
-			YrMeteogramURL:  cfg.YrMeteogramURL,
-			SkippyImg:       cfg.SkippyImg,
+			ClearOutsideImg: "/img/clearoutside",
+			YrMeteogramURL:  "/img/yr",
+			SkippyImg:       "/img/skippy",
 			DeepSpaceURL:    cfg.DeepSpaceURL,
 		},
 	}, nil
@@ -62,8 +71,19 @@ func (a *App) Routes() http.Handler {
 	mux := http.NewServeMux()
 
 	static, _ := fs.Sub(staticFS, "static")
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
+	staticSrv := http.FileServer(http.FS(static))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", staticSrv))
 
+	// Serve the files browsers request from the site root by convention.
+	for _, name := range []string{"favicon.ico", "apple-touch-icon.png", "site.webmanifest"} {
+		file := name
+		mux.HandleFunc("GET /"+file, func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/" + file
+			staticSrv.ServeHTTP(w, r)
+		})
+	}
+
+	mux.HandleFunc("GET /img/{source}", a.proxy.handle)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /{$}", a.handleIndex)
 	mux.HandleFunc("GET /nights/rows", a.handleRows)

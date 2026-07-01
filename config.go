@@ -77,7 +77,7 @@ func FromEnv() Config {
 		ClearOutsideImg: getenv("CLEARSKY_CLEAROUTSIDE_IMG",
 			fmt.Sprintf("https://clearoutside.com/forecast_image_large/%.2f/%.2f/forecast.png", lat, lon)),
 		YrMeteogramURL: getenv("CLEARSKY_YR_METEOGRAM", "https://www.yr.no/en/content/2-2158177/meteogram.svg"),
-		SkippyImg:      getenv("CLEARSKY_SKIPPY_IMG", "http://www.skippysky.com.au/Melbourne/cloud_total/melb_006_cct.png"),
+		SkippyImg:      getenv("CLEARSKY_SKIPPY_IMG", "https://www.skippysky.com.au/Melbourne/cloud_total/melb_006_cct.png"),
 		DeepSpaceURL:   getenv("CLEARSKY_DEEPSPACE_URL", "https://deepspaceplace.com/weather"),
 		Thresholds: Thresholds{
 			RainMmVetoHour:  getenvFloat("CLEARSKY_RAIN_MM_VETO_HOUR", 0.0),
