@@ -86,6 +86,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /img/{source}", a.proxy.handle)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /{$}", a.handleIndex)
+	mux.HandleFunc("GET /api/tonight", a.handleAPITonight)
 	mux.HandleFunc("GET /nights/rows", a.handleRows)
 	mux.HandleFunc("POST /run", a.handleRun)
 
@@ -138,6 +139,27 @@ func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := a.tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		slog.Error("render index", "err", err)
+	}
+}
+
+// handleAPITonight returns tonight's decision as JSON for machine clients (the
+// observatory monitor ESP32). Before the evening run has recorded today's row,
+// it falls back to the most recent night so clients always get a decision.
+func (a *App) handleAPITonight(w http.ResponseWriter, r *http.Request) {
+	date := time.Now().In(a.loc).Format("2006-01-02")
+	n, err := a.q.GetNight(r.Context(), date)
+	if err != nil {
+		nights, lerr := a.q.ListNights(r.Context(), store.ListNightsParams{Limit: 1, Offset: 0})
+		if lerr != nil || len(nights) == 0 {
+			http.Error(w, "no nights recorded", http.StatusNotFound)
+			return
+		}
+		n = nights[0]
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if err := json.NewEncoder(w).Encode(a.toView(n)); err != nil {
+		slog.Error("encode api tonight", "err", err)
 	}
 }
 
