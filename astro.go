@@ -90,6 +90,29 @@ func moonInfo(d Darkness, lat, lon float64, loc *time.Location) MoonInfo {
 	return info
 }
 
+// Note is a short, display-only caption on how much the moon will interfere. It never
+// affects the decision — it tells you what to point at, not whether to go out. A 96%
+// moon does not stop you imaging, it stops you imaging faint broadband targets.
+func (m MoonInfo) Note() string {
+	var s string
+	switch {
+	case m.IllumPct >= 80:
+		s = "bright moon — narrowband, lunar or planetary only"
+	case m.IllumPct >= 50:
+		s = "moon up — narrowband or bright targets"
+	case m.IllumPct >= 25:
+		s = "some moonlight — faint broadband will suffer"
+	default:
+		s = "dark sky — good for faint broadband targets"
+	}
+	if m.Set != nil {
+		s += ", sets " + m.Set.Format("15:04")
+	} else if m.Rise != nil {
+		s += ", rises " + m.Rise.Format("15:04")
+	}
+	return s
+}
+
 func withinWindow(t time.Time, d Darkness) bool {
 	if t.IsZero() {
 		return false

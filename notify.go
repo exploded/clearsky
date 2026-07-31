@@ -41,18 +41,33 @@ func (m Message) Body() string {
 		head, m.Date.Format("Mon 2 Jan"), m.Result.Score, m.Source)
 	fmt.Fprintf(&b, "%s\n\n", m.Result.Reason)
 
+	w := m.Result.Window
+	if w.Hours > 0 {
+		fmt.Fprintf(&b, "Window:    %s — %dh usable, avg %d%% cloud (peak %d%%)\n",
+			w.Label, w.Hours, w.AvgCloud, w.MaxCloud)
+	} else {
+		fmt.Fprintf(&b, "Window:    none — no hour met the cloud/rain gate\n")
+	}
 	dur := m.Dark.Dawn.Sub(m.Dark.Dusk)
 	fmt.Fprintf(&b, "Darkness:  dusk %s → dawn %s (%s %s dark)\n",
 		m.Dark.Dusk.Format("15:04"), m.Dark.Dawn.Format("Mon 15:04"),
 		humanDur(dur), m.Dark.Kind)
-	fmt.Fprintf(&b, "Cloud:     avg %d%%, peak %d%% at %s (low %d%%, mid %d%%, high %d%%)\n",
+	fmt.Fprintf(&b, "Cloud:     whole night avg %d%%, peak %d%% at %s (low %d%%, mid %d%%, high %d%%)\n",
 		m.Result.Cloud.Avg, m.Result.Cloud.Max, m.Result.Cloud.PeakAt,
 		m.Result.Cloud.MaxLow, m.Result.Cloud.MaxMid, m.Result.Cloud.MaxHigh)
-	fmt.Fprintf(&b, "Rain:      %.1f mm, max prob %d%%\n",
-		m.Result.Rain.TotalMm, m.Result.Rain.MaxProbPct)
-	fmt.Fprintf(&b, "Moon:      %.0f%% (%s)%s      (info only)\n",
+	fmt.Fprintf(&b, "Rain:      %.1f mm, max prob %d%%%s\n",
+		m.Result.Rain.TotalMm, m.Result.Rain.MaxProbPct, packUpNote(m.Result.Rain))
+	fmt.Fprintf(&b, "Moon:      %.0f%% (%s)%s\n",
 		m.Moon.IllumPct, m.Moon.PhaseName, moonTimes(m.Moon))
+	fmt.Fprintf(&b, "           %s   (info only — never affects the decision)\n", m.Moon.Note())
 	return b.String()
+}
+
+func packUpNote(r RainSummary) string {
+	if r.PackUpAt == "" {
+		return ""
+	}
+	return " — arrives " + r.PackUpAt + ", pack up by then"
 }
 
 func moonTimes(m MoonInfo) string {
@@ -86,9 +101,10 @@ func demoMessage(loc *time.Location) Message {
 		Date:   now,
 		Source: "test",
 		Result: Result{
-			GO: true, Score: 82, Reason: "TEST MESSAGE — clear: avg 8% cloud, peak 22%, no rain",
-			Cloud: CloudSummary{Avg: 8, Max: 22, PeakAt: "00:00", MaxHigh: 22},
-			Rain:  RainSummary{TotalMm: 0, MaxProbPct: 5},
+			GO: true, Score: 82, Reason: "TEST MESSAGE — clear 19:45→01:45, 6h usable, avg 8% cloud",
+			Cloud:  CloudSummary{Avg: 8, Max: 22, PeakAt: "00:00", MaxHigh: 22},
+			Rain:   RainSummary{TotalMm: 0, MaxProbPct: 5},
+			Window: WindowSummary{Label: "19:45→01:45", Hours: 6, AvgCloud: 8, MaxCloud: 22},
 		},
 		Dark: Darkness{Dusk: dusk, Dawn: dawn, Kind: "astronomical"},
 		Moon: MoonInfo{IllumPct: 12, PhaseName: "Waxing Crescent", Set: &moonSet},

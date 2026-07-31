@@ -46,14 +46,21 @@ type Config struct {
 
 // Thresholds are the tunable decision rules (all env-driven). Moon is never here —
 // it is informational only and never affects the GO/NO-GO decision.
+//
+// The cloud caps are applied PER HOUR, gating which hours count as imageable; the
+// average cap then applies to the resulting usable window. They are deliberately
+// looser than a whole-night peak cap would be — a single marginal hour inside an
+// otherwise clear run should not end the night.
 type Thresholds struct {
 	RainMmVetoHour  float64 // per-hour precip veto (mm)
 	RainProbVetoPct int     // per-hour precip probability veto (%)
-	RainMmTotalVeto float64 // window total precip veto (mm)
-	CloudAvgMaxPct  int     // mean total cloud gate (%)
-	CloudMaxPct     int     // peak total cloud gate (%)
-	CloudLowMaxPct  int     // peak low cloud gate (%)
-	CloudMidMaxPct  int     // peak mid cloud gate (%)
+	RainMmTotalVeto float64 // usable-window total precip veto (mm)
+	RainMarginHours int     // hours after the window to scan for a "pack up by" warning
+	MinUsableHours  int     // shortest usable window worth a GO
+	CloudAvgMaxPct  int     // mean total cloud over the usable window (%)
+	CloudMaxPct     int     // per-hour total cloud cap (%)
+	CloudLowMaxPct  int     // per-hour low cloud cap (%)
+	CloudMidMaxPct  int     // per-hour mid cloud cap (%)
 	VisibilityMinM  int     // soft haze note threshold (m); no veto
 }
 
@@ -81,12 +88,14 @@ func FromEnv() Config {
 		DeepSpaceURL:   getenv("CLEARSKY_DEEPSPACE_URL", "https://deepspaceplace.com/weather"),
 		Thresholds: Thresholds{
 			RainMmVetoHour:  getenvFloat("CLEARSKY_RAIN_MM_VETO_HOUR", 0.0),
-			RainProbVetoPct: getenvInt("CLEARSKY_RAIN_PROB_VETO_PCT", 20),
+			RainProbVetoPct: getenvInt("CLEARSKY_RAIN_PROB_VETO_PCT", 35),
 			RainMmTotalVeto: getenvFloat("CLEARSKY_RAIN_MM_TOTAL_VETO", 0.2),
+			RainMarginHours: getenvInt("CLEARSKY_RAIN_MARGIN_HOURS", 2),
+			MinUsableHours:  getenvInt("CLEARSKY_MIN_USABLE_HOURS", 3),
 			CloudAvgMaxPct:  getenvInt("CLEARSKY_CLOUD_AVG_MAX_PCT", 25),
 			CloudMaxPct:     getenvInt("CLEARSKY_CLOUD_MAX_PCT", 40),
-			CloudLowMaxPct:  getenvInt("CLEARSKY_CLOUD_LOW_MAX_PCT", 15),
-			CloudMidMaxPct:  getenvInt("CLEARSKY_CLOUD_MID_MAX_PCT", 25),
+			CloudLowMaxPct:  getenvInt("CLEARSKY_CLOUD_LOW_MAX_PCT", 30),
+			CloudMidMaxPct:  getenvInt("CLEARSKY_CLOUD_MID_MAX_PCT", 30),
 			VisibilityMinM:  getenvInt("CLEARSKY_VIS_MIN_M", 20000),
 		},
 		DiscordWebhookURL: getenv("CLEARSKY_DISCORD_WEBHOOK_URL", ""),

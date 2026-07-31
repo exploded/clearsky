@@ -33,11 +33,17 @@ type HourlyPoint struct {
 	VisibilityM   int       `json:"visM"`
 }
 
-// HoursWithin returns the forecast hours whose timestamp falls in [start, end].
+// HoursWithin returns the forecast hours that OVERLAP [start, end]. An hourly point
+// stamped T describes the hour [T, T+1h), so the bucket containing start is included
+// even though it begins slightly before it — a strict comparison would silently throw
+// away the first hour of nearly every night (dusk at 19:02 discarding all of 19:00).
 func (f Forecast) HoursWithin(start, end time.Time) []HourlyPoint {
+	// Floor to the local hour. Built explicitly rather than with Truncate, which works
+	// on absolute time and so misfires in half-hour zones (Adelaide, India).
+	from := time.Date(start.Year(), start.Month(), start.Day(), start.Hour(), 0, 0, 0, start.Location())
 	out := make([]HourlyPoint, 0, len(f.Hours))
 	for _, h := range f.Hours {
-		if (h.At.Equal(start) || h.At.After(start)) && (h.At.Equal(end) || h.At.Before(end)) {
+		if !h.At.Before(from) && h.At.Before(end) {
 			out = append(out, h)
 		}
 	}

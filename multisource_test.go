@@ -24,15 +24,19 @@ func (s stubSource) Fetch(_ context.Context, _, _ float64) (Forecast, error) {
 
 func TestMergePessimistic(t *testing.T) {
 	loc := mustMelbourne(t)
+	t0 := time.Date(2026, 7, 1, 21, 0, 0, 0, loc)
 	t1 := time.Date(2026, 7, 1, 22, 0, 0, 0, loc)
 	t2 := time.Date(2026, 7, 1, 23, 0, 0, 0, loc)
 
-	// Source A: clear at both hours. Source B: cloudy + rainy at t2.
+	// Source A: clear at all three hours. Source B: cloudy + rainy at t2. Three hours
+	// so source A alone clears the minimum usable window.
 	a := stubSource{name: "a", hours: []HourlyPoint{
+		{At: t0, CloudTotal: 5, CloudLow: 0, CloudMid: 0, CloudHigh: 5, PrecipMm: 0},
 		{At: t1, CloudTotal: 5, CloudLow: 0, CloudMid: 0, CloudHigh: 5, PrecipMm: 0},
 		{At: t2, CloudTotal: 10, CloudLow: 0, CloudMid: 5, CloudHigh: 10, PrecipMm: 0},
 	}}
 	b := stubSource{name: "b", hours: []HourlyPoint{
+		{At: t0.UTC(), CloudTotal: 6, CloudLow: 1, CloudMid: 0, CloudHigh: 6, PrecipMm: 0},
 		{At: t1.UTC(), CloudTotal: 8, CloudLow: 2, CloudMid: 0, CloudHigh: 8, PrecipMm: 0},
 		{At: t2.UTC(), CloudTotal: 90, CloudLow: 60, CloudMid: 40, CloudHigh: 10, PrecipMm: 1.2, PrecipProbPct: 80},
 	}}
@@ -44,21 +48,23 @@ func TestMergePessimistic(t *testing.T) {
 	if fc.Source != "a+b" {
 		t.Errorf("source = %q, want a+b", fc.Source)
 	}
-	if len(fc.Hours) != 2 {
-		t.Fatalf("expected 2 merged hours, got %d", len(fc.Hours))
+	if len(fc.Hours) != 3 {
+		t.Fatalf("expected 3 merged hours, got %d", len(fc.Hours))
 	}
 	// t2 must reflect the WORST of both (source B): cloud 90, precip 1.2.
-	got := fc.Hours[1]
+	got := fc.Hours[2]
 	if got.CloudTotal != 90 || got.PrecipMm != 1.2 || got.CloudLow != 60 {
 		t.Errorf("pessimistic merge wrong at t2: %+v", got)
 	}
 
-	// Agreement semantics: A alone would be GO, but merged (with B's rain) is NO-GO.
+	// Agreement semantics: A alone is a 3h usable window (GO); the merge loses t2 to
+	// B's rain, leaving only 2h — under the minimum, so NO-GO.
 	th := defaultThresholds()
-	if !Evaluate(a.hours, th).GO {
+	dark := testDark()
+	if !Evaluate(a.hours, dark, th).GO {
 		t.Error("source A alone should be GO")
 	}
-	if Evaluate(fc.Hours, th).GO {
+	if Evaluate(fc.Hours, dark, th).GO {
 		t.Error("merged (disagreement) should be NO-GO")
 	}
 }

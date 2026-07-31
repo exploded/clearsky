@@ -47,7 +47,7 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 		return Result{}, fmt.Errorf("fetch forecast: %w", err)
 	}
 	hours := fc.HoursWithin(dark.Dusk, dark.Dawn)
-	res := Evaluate(hours, r.cfg.Thresholds)
+	res := Evaluate(hours, dark, r.cfg.Thresholds)
 
 	// Was this night already notified? (Preserved across the upsert.)
 	alreadyNotified := false
@@ -59,6 +59,7 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 
 	cloudJSON, _ := json.Marshal(res.Cloud)
 	rainJSON, _ := json.Marshal(res.Rain)
+	windowJSON, _ := json.Marshal(res.Window)
 	hourlyJSON, _ := json.Marshal(hours)
 	now := time.Now().Unix()
 
@@ -70,6 +71,7 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 		Source:       fc.Source,
 		CloudSummary: string(cloudJSON),
 		RainSummary:  string(rainJSON),
+		WindowJson:   string(windowJSON),
 		HourlyJson:   string(hourlyJSON),
 		DuskAt:       dark.Dusk.Unix(),
 		DawnAt:       dark.Dawn.Unix(),
@@ -83,7 +85,8 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 	}
 
 	slog.Info("night evaluated", "date", dateKey, "decision", decisionCode(res.GO),
-		"score", res.Score, "reason", res.Reason, "source", fc.Source)
+		"score", res.Score, "reason", res.Reason, "source", fc.Source,
+		"usable_window", res.Window.Label, "usable_hours", res.Window.Hours)
 
 	// Notify on GO nights only, and only once per date (unless a NO-GO later flips to
 	// GO — then notified_at is still null, so it will notify).

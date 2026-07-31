@@ -121,10 +121,17 @@ type NightView struct {
 	RainMm        float64
 	RainProb      int
 	MoonPct       int
+	MoonNote      string
 	Dusk          string
 	Dawn          string
 	Imaged        string
 	ImageURL      string
+
+	// The usable window the decision was actually made on. Rows written before the
+	// windowed evaluator landed have none, and render as "—".
+	WindowLabel string
+	WindowHours int
+	WindowAvg   int
 }
 
 func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -217,8 +224,13 @@ func (a *App) buildPageData(nights []store.Night) pageData {
 func (a *App) toView(n store.Night) NightView {
 	var cloud CloudSummary
 	var rain RainSummary
+	var win WindowSummary
 	_ = json.Unmarshal([]byte(n.CloudSummary), &cloud)
 	_ = json.Unmarshal([]byte(n.RainSummary), &rain)
+	_ = json.Unmarshal([]byte(n.WindowJson), &win)
+	if win.Label == "" {
+		win.Label = "—"
+	}
 
 	label := n.NightDate
 	if d, err := time.ParseInLocation("2006-01-02", n.NightDate, a.loc); err == nil {
@@ -247,10 +259,14 @@ func (a *App) toView(n store.Night) NightView {
 		RainMm:        rain.TotalMm,
 		RainProb:      rain.MaxProbPct,
 		MoonPct:       int(n.MoonIllumPct + 0.5),
+		MoonNote:      MoonInfo{IllumPct: n.MoonIllumPct}.Note(),
 		Dusk:          unixHM(n.DuskAt, a.loc),
 		Dawn:          unixHMDay(n.DawnAt, a.loc),
 		Imaged:        imaged,
 		ImageURL:      n.ImageUrl,
+		WindowLabel:   win.Label,
+		WindowHours:   win.Hours,
+		WindowAvg:     win.AvgCloud,
 	}
 }
 
