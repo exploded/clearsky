@@ -205,6 +205,57 @@ func TestEvaluateRegression2026_07_31(t *testing.T) {
 	}
 }
 
+// Times must be reported in site wall-clock regardless of how the provider stamped
+// them. MET Norway returns UTC, and those stamps used to reach the formatter untouched:
+// a session ending 02:00 Melbourne was published as "19:03→16:00", with rain "from
+// 16:00" — read as 4pm the following afternoon. Only the window start looked sane,
+// because it gets clamped to the (site-local) dusk.
+func TestEvaluateReportsSiteLocalTimesForUTCSource(t *testing.T) {
+	dark := testDark()
+
+	// Clear 19:00–01:00 local, rain from 02:00 local — stamped UTC, as met.no delivers.
+	night := append(run(19, 3, 3, 3, 3, 3, 3, 3), hp(2, 95, 95, 0, 0, 80, 0.6))
+	for i := range night {
+		night[i].At = night[i].At.UTC()
+	}
+
+	fc := Forecast{Source: "met-no", Hours: night}.InLocation(testLoc)
+	got := Evaluate(fc.HoursWithin(dark.Dusk, dark.Dawn), dark, defaultThresholds())
+
+	if !got.GO {
+		t.Fatalf("want GO, got NO-GO: %s", got.Reason)
+	}
+	if got.Window.Hours != 7 {
+		t.Errorf("usable hours = %d, want 7", got.Window.Hours)
+	}
+	if got.Window.Label != "19:02→02:00" {
+		t.Errorf("window label = %q, want %q", got.Window.Label, "19:02→02:00")
+	}
+	if got.Rain.PackUpAt != "02:00" {
+		t.Errorf("pack up at = %q, want %q", got.Rain.PackUpAt, "02:00")
+	}
+	// The unix boundaries were always right — it was only the rendering that lied.
+	if want := time.Date(2026, 7, 2, 2, 0, 0, 0, testLoc).Unix(); got.Window.EndAt != want {
+		t.Errorf("window EndAt = %d, want %d", got.Window.EndAt, want)
+	}
+}
+
+// The merge keys on absolute time, so a UTC-stamped hour and its site-local twin are
+// the same hour — and the surviving stamp must not depend on which source won.
+func TestForecastInLocationNormalisesMixedSources(t *testing.T) {
+	utc := Forecast{Source: "met-no", Hours: []HourlyPoint{hp(23, 5, 5, 0, 0, 0, 0)}}
+	utc.Hours[0].At = utc.Hours[0].At.UTC()
+	local := Forecast{Source: "open-meteo", Hours: []HourlyPoint{hp(23, 9, 9, 0, 0, 0, 0)}}
+
+	merged := mergePessimistic([]Forecast{utc, local}).InLocation(testLoc)
+	if n := len(merged.Hours); n != 1 {
+		t.Fatalf("merged hours = %d, want 1 (same instant, different zones)", n)
+	}
+	if got := merged.Hours[0].At.Format("15:04"); got != "23:00" {
+		t.Errorf("merged hour renders as %q, want %q", got, "23:00")
+	}
+}
+
 func TestEvaluateEmpty(t *testing.T) {
 	got := Evaluate(nil, testDark(), defaultThresholds())
 	if got.GO {

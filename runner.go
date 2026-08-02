@@ -46,6 +46,10 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 	if err != nil {
 		return Result{}, fmt.Errorf("fetch forecast: %w", err)
 	}
+	// Providers stamp their hours in whatever zone they please (MET Norway: UTC). Pin
+	// them to the site zone here, once, so every HH:MM downstream — window label,
+	// pack-up time, the persisted hourly snapshot — reads as site wall-clock.
+	fc = fc.InLocation(r.loc)
 	hours := fc.HoursWithin(dark.Dusk, dark.Dawn)
 	res := Evaluate(hours, dark, r.cfg.Thresholds)
 

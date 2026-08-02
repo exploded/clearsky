@@ -22,6 +22,11 @@ type Forecast struct {
 }
 
 // HourlyPoint is one hour of forecast. Cloud values are percentages (0..100).
+//
+// At is an absolute instant, but its *location* matters: every HH:MM the app reports
+// (window label, pack-up time, peak-cloud time) is formatted straight off it. Providers
+// disagree — Open-Meteo is asked for site-local stamps, MET Norway returns UTC — so the
+// runner normalises a fetched Forecast with InLocation before anything reads At.
 type HourlyPoint struct {
 	At            time.Time `json:"at"`
 	CloudTotal    int       `json:"cloud"`
@@ -31,6 +36,21 @@ type HourlyPoint struct {
 	PrecipMm      float64   `json:"precipMm"`
 	PrecipProbPct int       `json:"precipProbPct"`
 	VisibilityM   int       `json:"visM"`
+}
+
+// InLocation restamps every hour into loc. The instants are unchanged — only the wall
+// clock they render as — so it is safe to call on any provider's output and required
+// before formatting: a UTC-stamped 02:00 Melbourne hour otherwise prints as "16:00".
+func (f Forecast) InLocation(loc *time.Location) Forecast {
+	if loc == nil {
+		return f
+	}
+	hours := make([]HourlyPoint, len(f.Hours))
+	for i, h := range f.Hours {
+		h.At = h.At.In(loc)
+		hours[i] = h
+	}
+	return Forecast{Source: f.Source, Hours: hours}
 }
 
 // HoursWithin returns the forecast hours that OVERLAP [start, end]. An hourly point
