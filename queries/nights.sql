@@ -4,10 +4,10 @@
 -- created_at and notified_at are preserved on conflict.
 INSERT INTO nights (
   night_date, decision, score, reason, source,
-  cloud_summary, rain_summary, window_json, hourly_json,
+  cloud_summary, rain_summary, window_json, hourly_json, sources_json,
   dusk_at, dawn_at, moon_rise_at, moon_set_at, moon_illum_pct,
   created_at, updated_at
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(night_date) DO UPDATE SET
   decision       = excluded.decision,
   score          = excluded.score,
@@ -16,6 +16,7 @@ ON CONFLICT(night_date) DO UPDATE SET
   cloud_summary  = excluded.cloud_summary,
   rain_summary   = excluded.rain_summary,
   window_json    = excluded.window_json,
+  sources_json   = excluded.sources_json,
   hourly_json    = excluded.hourly_json,
   dusk_at        = excluded.dusk_at,
   dawn_at        = excluded.dawn_at,

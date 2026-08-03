@@ -13,7 +13,8 @@ Use `go-htmx-skill` for any template/HTMX/UI work and `sqlc-sqlite` for any quer
 ## Stack
 Go 1.26, stdlib `net/http` (no framework), html/template + HTMX (self-hosted in
 `static/`), modernc.org/sqlite (pure Go) via sqlc, `kixorz/suncalc` for darkness/moon.
-Only two direct deps. Weather: Open-Meteo + yr.no (MET Norway), both free/keyless.
+Only two direct deps. Weather: Open-Meteo (ECMWF + GFS + ICON by name) and yr.no
+(MET Norway) as an alternate, all free/keyless.
 
 ## Build / test / run (Windows)
 ```
@@ -32,6 +33,7 @@ Flat `package main` at the root; the one separate package is generated `store/`.
 ```
 main.go / config.go        entry, env config (CLEARSKY_* vars)
 openmeteo.go / metno.go / multisource.go / source.go   weather providers behind Source interface
+agreement.go               per-source verdicts (who agreed, how far apart)
 astro.go                   dark window + moon (suncalc)
 decision.go                GO/NO-GO rules (usable-window search + cloud gate)
 runner.go / scheduler.go   fetch→decide→persist→notify; 18:00 timer + catch-up-on-boot
@@ -52,9 +54,27 @@ templates/ static/ migrations/ queries/ store/
 ## Gotchas (verified in code / git history)
 - **Everything is embedded** — template/static/migration changes require a rebuild.
 - **yr.no (MET Norway) requires a descriptive User-Agent with contact info**
-  (`CLEARSKY_METNO_USER_AGENT`); requests without one get rejected.
-- Default source mode is `agreement`: Open-Meteo AND yr.no must BOTH be clear for a GO.
-  Adding a provider = one new file implementing `Source`.
+  (`CLEARSKY_METNO_USER_AGENT`); requests without one get rejected. Only consulted
+  when `CLEARSKY_SOURCE=met-no` — it is no longer part of the default agreement set.
+- **Agreement sources must be INDEPENDENT models, and that is not free.** Default mode
+  `agreement` is ECMWF + GFS + ICON, each fetched by name via Open-Meteo's `models=`
+  (see `agreementModels` in main.go). The original pairing — Open-Meteo `best_match` +
+  yr.no — was the same model twice: on 2026-08-03 they agreed within ~4% on every hour
+  and jointly passed a window GFS/ICON put at 85-100% cloud, shipping a false GO. The
+  pessimistic merge only filters anything if the sources can actually disagree. Before
+  adding a provider, check it against the others on a marginal night — a new API is not
+  a new opinion.
+- **BOM is not available as a source.** Their public API forbids reuse in its own
+  copyright field, carries no cloud data (icon + rain chance only), and ACCESS-G via
+  Open-Meteo returns null for every field at this site. Don't re-litigate this.
+- Open-Meteo returns JSON `null` for fields a model lacks, and `encoding/json` turns
+  that into `0` — i.e. "perfectly clear". `openMeteoResponse` uses pointer slices and
+  `Fetch` errors out when a response has no cloud data at all, so a dud model fails
+  loudly instead of manufacturing a GO.
+- Per-source verdicts are persisted to `nights.sources_json` (`Agreement` in
+  agreement.go) and shown as an expandable cell on the log page; a split decision is
+  flagged amber. The decision itself is still made on the merge — the breakdown is
+  the record of whether the models actually agreed.
 - **The decision is made on the "usable window", not the whole night.** `Evaluate`
   finds the longest contiguous run of hours that each pass the per-hour cloud/rain
   gate, then requires that run to be ≥ `MIN_USABLE_HOURS` (3) and average ≤

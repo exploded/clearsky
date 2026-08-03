@@ -23,7 +23,15 @@ func NewMultiSource(sources ...Source) *MultiSource {
 	return &MultiSource{sources: sources}
 }
 
-func (m *MultiSource) Name() string { return "agreement" }
+// Name lists the members rather than just saying "agreement", so the startup log and
+// any single-source fallback name the models actually being consulted.
+func (m *MultiSource) Name() string {
+	names := make([]string, 0, len(m.sources))
+	for _, s := range m.sources {
+		names = append(names, s.Name())
+	}
+	return joinNames(names)
+}
 
 func (m *MultiSource) Fetch(ctx context.Context, lat, lon float64) (Forecast, error) {
 	type res struct {
@@ -99,7 +107,10 @@ func mergePessimistic(forecasts []Forecast) Forecast {
 	}
 	sort.Slice(hours, func(i, j int) bool { return hours[i].At.Before(hours[j].At) })
 
-	return Forecast{Source: joinNames(names), Hours: hours}
+	// Keep the un-merged inputs so the runner can report each model's own verdict.
+	// The merge is deliberately lossy — it answers "is every source clear?" and cannot
+	// distinguish unanimous agreement from one pessimist overruling three optimists.
+	return Forecast{Source: joinNames(names), Hours: hours, Members: forecasts}
 }
 
 func maxF(a, b float64) float64 {

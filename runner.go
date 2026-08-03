@@ -52,6 +52,9 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 	fc = fc.InLocation(r.loc)
 	hours := fc.HoursWithin(dark.Dusk, dark.Dawn)
 	res := Evaluate(hours, dark, r.cfg.Thresholds)
+	// Re-decide the same night from each source alone. Purely for the record: the
+	// decision above stands, but a 1-of-3 GO is worth seeing on the log page.
+	agreement := summarizeAgreement(fc, dark, r.cfg.Thresholds)
 
 	// Was this night already notified? (Preserved across the upsert.)
 	alreadyNotified := false
@@ -65,6 +68,7 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 	rainJSON, _ := json.Marshal(res.Rain)
 	windowJSON, _ := json.Marshal(res.Window)
 	hourlyJSON, _ := json.Marshal(hours)
+	sourcesJSON, _ := json.Marshal(agreement)
 	now := time.Now().Unix()
 
 	if err := r.q.UpsertNight(ctx, store.UpsertNightParams{
@@ -77,6 +81,7 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 		RainSummary:  string(rainJSON),
 		WindowJson:   string(windowJSON),
 		HourlyJson:   string(hourlyJSON),
+		SourcesJson:  string(sourcesJSON),
 		DuskAt:       dark.Dusk.Unix(),
 		DawnAt:       dark.Dawn.Unix(),
 		MoonRiseAt:   nullUnix(moon.Rise),
@@ -90,7 +95,9 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 
 	slog.Info("night evaluated", "date", dateKey, "decision", decisionCode(res.GO),
 		"score", res.Score, "reason", res.Reason, "source", fc.Source,
-		"usable_window", res.Window.Label, "usable_hours", res.Window.Hours)
+		"usable_window", res.Window.Label, "usable_hours", res.Window.Hours,
+		"sources_go", agreement.GoCount, "sources_n", len(agreement.Sources),
+		"cloud_spread", agreement.Spread)
 
 	// Notify on GO nights only, and only once per date (unless a NO-GO later flips to
 	// GO — then notified_at is still null, so it will notify).

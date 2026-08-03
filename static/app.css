@@ -59,6 +59,21 @@ tr.go { background: rgba(53, 194, 106, 0.06); }
 .reason { color: var(--text); min-width: 22ch; }
 .src { color: var(--muted); font-size: 13px; }
 
+/* Per-source agreement. The decision runs on the pessimistic merge of every model, so
+   the interesting question is whether they agreed — a 1-of-3 GO is a coin toss wearing
+   a verdict. Collapsed by default (<details>, no JS); a split decision is amber so it
+   catches the eye without competing with the GO/NO-GO badge. */
+.agree > summary { cursor: pointer; white-space: nowrap; color: var(--muted); }
+.agree.split > summary { color: #e8b13d; font-weight: 600; }
+.agree[open] > summary { margin-bottom: 6px; }
+.agree ul { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.agree li { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; white-space: nowrap; }
+.agree .m { min-width: 4.5ch; color: var(--text); }
+.agree .v { font-weight: 700; min-width: 5.5ch; }
+.agree .v-go .v { color: var(--go); }
+.agree .v-nogo .v { color: var(--nogo); }
+.agree .d { color: var(--muted); font-variant-numeric: tabular-nums; }
+
 /* Usable window — the run of hours the decision was actually made on. */
 .win { white-space: nowrap; }
 .win strong { color: var(--text); font-variant-numeric: tabular-nums; }

@@ -19,6 +19,12 @@ type Source interface {
 type Forecast struct {
 	Source string
 	Hours  []HourlyPoint
+
+	// Members is set only by MultiSource: the untouched per-provider forecasts that
+	// Hours was merged from. It lets the runner ask each model for its own verdict on
+	// the night, so the log page can show whether the sources actually agreed or the
+	// merge was hiding a 90%-cloud outlier. Always empty for a single provider.
+	Members []Forecast
 }
 
 // HourlyPoint is one hour of forecast. Cloud values are percentages (0..100).
@@ -50,7 +56,16 @@ func (f Forecast) InLocation(loc *time.Location) Forecast {
 		h.At = h.At.In(loc)
 		hours[i] = h
 	}
-	return Forecast{Source: f.Source, Hours: hours}
+	// Members are restamped too — each is evaluated independently downstream, and a
+	// UTC-stamped member would slice the wrong hours out of the darkness window.
+	var members []Forecast
+	if len(f.Members) > 0 {
+		members = make([]Forecast, len(f.Members))
+		for i, m := range f.Members {
+			members[i] = m.InLocation(loc)
+		}
+	}
+	return Forecast{Source: f.Source, Hours: hours, Members: members}
 }
 
 // HoursWithin returns the forecast hours that OVERLAP [start, end]. An hourly point

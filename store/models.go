@@ -30,4 +30,5 @@ type Night struct {
 	ImageUrl     string        `json:"image_url"`
 	NinaJson     string        `json:"nina_json"`
 	WindowJson   string        `json:"window_json"`
+	SourcesJson  string        `json:"sources_json"`
 }

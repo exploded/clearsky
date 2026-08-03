@@ -132,6 +132,13 @@ type NightView struct {
 	WindowLabel string
 	WindowHours int
 	WindowAvg   int
+
+	// What each weather model said about this night on its own. Empty for
+	// single-provider runs and for rows written before agreement was recorded — both
+	// fall back to showing the bare source name.
+	Sources      []SourceVerdict
+	SourcesLabel string
+	Split        bool // sources disagreed — the row gets a visual flag
 }
 
 func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -225,9 +232,11 @@ func (a *App) toView(n store.Night) NightView {
 	var cloud CloudSummary
 	var rain RainSummary
 	var win WindowSummary
+	var agree Agreement
 	_ = json.Unmarshal([]byte(n.CloudSummary), &cloud)
 	_ = json.Unmarshal([]byte(n.RainSummary), &rain)
 	_ = json.Unmarshal([]byte(n.WindowJson), &win)
+	_ = json.Unmarshal([]byte(n.SourcesJson), &agree)
 	if win.Label == "" {
 		win.Label = "—"
 	}
@@ -267,6 +276,9 @@ func (a *App) toView(n store.Night) NightView {
 		WindowLabel:   win.Label,
 		WindowHours:   win.Hours,
 		WindowAvg:     win.AvgCloud,
+		Sources:       agree.Sources,
+		SourcesLabel:  agree.Label(),
+		Split:         len(agree.Sources) > 0 && !agree.Unanimous(),
 	}
 }
 

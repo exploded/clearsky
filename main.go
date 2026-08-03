@@ -101,19 +101,46 @@ func main() {
 	_ = srv.Shutdown(shutdownCtx)
 }
 
-// buildSource constructs the weather source from config. "agreement" runs Open-Meteo
-// and yr.no together and requires both to be clear; the single-provider modes run just
-// one. Unknown values fall back to agreement.
+// agreementModels are the sources behind the default "agreement" mode: three global
+// NWP models from three different meteorological centres, each fetched by name.
+//
+// They are chosen for INDEPENDENCE, not accuracy. The previous pairing (Open-Meteo's
+// best_match blend + yr.no) was two views of one model — on 2026-08-03 they agreed
+// within ~4% on every hour of the night and jointly passed a window that GFS put at
+// 92-100% cloud. Requiring three genuinely separate models to agree is what makes the
+// pessimistic merge mean something.
+//
+// BOM's own ACCESS-G is deliberately absent: Open-Meteo carries it but returns null
+// for every field at this site, and BOM's public API has no cloud data and is not
+// licensed for reuse.
+var agreementModels = []struct{ model, name string }{
+	{"ecmwf_ifs025", "ecmwf"}, // ECMWF (Reading)
+	{"gfs_seamless", "gfs"},   // NOAA (US)
+	{"icon_seamless", "icon"}, // DWD (Germany)
+}
+
+// buildSource constructs the weather source from config. "agreement" requires every
+// model in agreementModels to be clear; the single-provider modes run just one.
+// Unknown values fall back to agreement.
 func buildSource(cfg Config) Source {
-	openMeteo := NewOpenMeteo(cfg.TZ)
-	metNo := NewMetNo(cfg.MetnoUserAgent)
 	switch cfg.Source {
 	case "open-meteo":
-		return openMeteo
+		return NewOpenMeteo(cfg.TZ)
 	case "met-no":
-		return metNo
+		return NewMetNo(cfg.MetnoUserAgent)
+	case "ecmwf", "gfs", "icon":
+		for _, m := range agreementModels {
+			if m.name == cfg.Source {
+				return NewOpenMeteoModel(cfg.TZ, m.model, m.name)
+			}
+		}
+		fallthrough
 	default: // "agreement"
-		return NewMultiSource(openMeteo, metNo)
+		sources := make([]Source, 0, len(agreementModels))
+		for _, m := range agreementModels {
+			sources = append(sources, NewOpenMeteoModel(cfg.TZ, m.model, m.name))
+		}
+		return NewMultiSource(sources...)
 	}
 }
 

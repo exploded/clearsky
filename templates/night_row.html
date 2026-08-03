@@ -4,7 +4,22 @@
   <td class="win">{{if .WindowHours}}<strong>{{.WindowLabel}}</strong><span class="win-sub">{{.WindowHours}}h · avg {{.WindowAvg}}%</span>{{else}}—{{end}}</td>
   <td class="num">{{.Score}}</td>
   <td class="reason">{{.Reason}}</td>
-  <td class="src">{{.Source}}</td>
+  <td class="src">
+    {{if .Sources}}
+      <details class="agree{{if .Split}} split{{end}}">
+        <summary title="Each model decided this night on its own, with the same rules">{{.SourcesLabel}}</summary>
+        <ul>
+          {{range .Sources}}
+            <li class="{{if .GO}}v-go{{else}}v-nogo{{end}}">
+              <span class="m">{{.Name}}</span>
+              <span class="v">{{if .GO}}GO{{else}}NO-GO{{end}}</span>
+              <span class="d">{{if .Hours}}{{.WindowLabel}} · {{.Hours}}h · {{.WindowAvg}}%{{else}}no usable hours{{end}}</span>
+            </li>
+          {{end}}
+        </ul>
+      </details>
+    {{else}}{{.Source}}{{end}}
+  </td>
   <td class="num">avg {{.CloudAvg}}% · peak {{.CloudMax}}%</td>
   <td class="num">{{printf "%.1f" .RainMm}}mm · {{.RainProb}}%</td>
   <td class="num" title="{{.MoonNote}}">{{.MoonPct}}%</td>

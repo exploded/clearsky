@@ -11,7 +11,7 @@ import (
 )
 
 const getNight = `-- name: GetNight :one
-SELECT night_date, decision, score, reason, source, cloud_summary, rain_summary, hourly_json, dusk_at, dawn_at, moon_rise_at, moon_set_at, moon_illum_pct, notified_at, created_at, updated_at, imaged, image_result, image_url, nina_json, window_json FROM nights WHERE night_date = ?
+SELECT night_date, decision, score, reason, source, cloud_summary, rain_summary, hourly_json, dusk_at, dawn_at, moon_rise_at, moon_set_at, moon_illum_pct, notified_at, created_at, updated_at, imaged, image_result, image_url, nina_json, window_json, sources_json FROM nights WHERE night_date = ?
 `
 
 func (q *Queries) GetNight(ctx context.Context, nightDate string) (Night, error) {
@@ -39,12 +39,13 @@ func (q *Queries) GetNight(ctx context.Context, nightDate string) (Night, error)
 		&i.ImageUrl,
 		&i.NinaJson,
 		&i.WindowJson,
+		&i.SourcesJson,
 	)
 	return i, err
 }
 
 const listNights = `-- name: ListNights :many
-SELECT night_date, decision, score, reason, source, cloud_summary, rain_summary, hourly_json, dusk_at, dawn_at, moon_rise_at, moon_set_at, moon_illum_pct, notified_at, created_at, updated_at, imaged, image_result, image_url, nina_json, window_json FROM nights ORDER BY night_date DESC LIMIT ? OFFSET ?
+SELECT night_date, decision, score, reason, source, cloud_summary, rain_summary, hourly_json, dusk_at, dawn_at, moon_rise_at, moon_set_at, moon_illum_pct, notified_at, created_at, updated_at, imaged, image_result, image_url, nina_json, window_json, sources_json FROM nights ORDER BY night_date DESC LIMIT ? OFFSET ?
 `
 
 type ListNightsParams struct {
@@ -83,6 +84,7 @@ func (q *Queries) ListNights(ctx context.Context, arg ListNightsParams) ([]Night
 			&i.ImageUrl,
 			&i.NinaJson,
 			&i.WindowJson,
+			&i.SourcesJson,
 		); err != nil {
 			return nil, err
 		}
@@ -98,7 +100,7 @@ func (q *Queries) ListNights(ctx context.Context, arg ListNightsParams) ([]Night
 }
 
 const listNightsBefore = `-- name: ListNightsBefore :many
-SELECT night_date, decision, score, reason, source, cloud_summary, rain_summary, hourly_json, dusk_at, dawn_at, moon_rise_at, moon_set_at, moon_illum_pct, notified_at, created_at, updated_at, imaged, image_result, image_url, nina_json, window_json FROM nights WHERE night_date < ? ORDER BY night_date DESC LIMIT ?
+SELECT night_date, decision, score, reason, source, cloud_summary, rain_summary, hourly_json, dusk_at, dawn_at, moon_rise_at, moon_set_at, moon_illum_pct, notified_at, created_at, updated_at, imaged, image_result, image_url, nina_json, window_json, sources_json FROM nights WHERE night_date < ? ORDER BY night_date DESC LIMIT ?
 `
 
 type ListNightsBeforeParams struct {
@@ -137,6 +139,7 @@ func (q *Queries) ListNightsBefore(ctx context.Context, arg ListNightsBeforePara
 			&i.ImageUrl,
 			&i.NinaJson,
 			&i.WindowJson,
+			&i.SourcesJson,
 		); err != nil {
 			return nil, err
 		}
@@ -209,10 +212,10 @@ func (q *Queries) SetNightNotified(ctx context.Context, arg SetNightNotifiedPara
 const upsertNight = `-- name: UpsertNight :exec
 INSERT INTO nights (
   night_date, decision, score, reason, source,
-  cloud_summary, rain_summary, window_json, hourly_json,
+  cloud_summary, rain_summary, window_json, hourly_json, sources_json,
   dusk_at, dawn_at, moon_rise_at, moon_set_at, moon_illum_pct,
   created_at, updated_at
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(night_date) DO UPDATE SET
   decision       = excluded.decision,
   score          = excluded.score,
@@ -221,6 +224,7 @@ ON CONFLICT(night_date) DO UPDATE SET
   cloud_summary  = excluded.cloud_summary,
   rain_summary   = excluded.rain_summary,
   window_json    = excluded.window_json,
+  sources_json   = excluded.sources_json,
   hourly_json    = excluded.hourly_json,
   dusk_at        = excluded.dusk_at,
   dawn_at        = excluded.dawn_at,
@@ -240,6 +244,7 @@ type UpsertNightParams struct {
 	RainSummary  string        `json:"rain_summary"`
 	WindowJson   string        `json:"window_json"`
 	HourlyJson   string        `json:"hourly_json"`
+	SourcesJson  string        `json:"sources_json"`
 	DuskAt       int64         `json:"dusk_at"`
 	DawnAt       int64         `json:"dawn_at"`
 	MoonRiseAt   sql.NullInt64 `json:"moon_rise_at"`
@@ -263,6 +268,7 @@ func (q *Queries) UpsertNight(ctx context.Context, arg UpsertNightParams) error 
 		arg.RainSummary,
 		arg.WindowJson,
 		arg.HourlyJson,
+		arg.SourcesJson,
 		arg.DuskAt,
 		arg.DawnAt,
 		arg.MoonRiseAt,
