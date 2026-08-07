@@ -105,7 +105,7 @@ func (o *OpenMeteo) Fetch(ctx context.Context, lat, lon float64) (Forecast, erro
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return Forecast{}, fmt.Errorf("open-meteo status %d", resp.StatusCode)
+		return Forecast{}, fmt.Errorf("open-meteo status %d: %s", resp.StatusCode, bodySnippet(resp.Body))
 	}
 
 	var body openMeteoResponse

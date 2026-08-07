@@ -63,6 +63,39 @@ func (m Message) Body() string {
 	return b.String()
 }
 
+// FailureMessage reports that a night's check could not be completed at all — every
+// attempt failed and the retry deadline passed, so no decision was recorded.
+//
+// This exists because the app's original failure mode was silence. A GO night notified,
+// a NO-GO night sat quietly in the log, and a night whose forecast fetch died looked
+// exactly like the latter. Four consecutive nights were lost that way in Aug 2026. A
+// broken check is now as loud as a good night.
+type FailureMessage struct {
+	Date     time.Time
+	Attempts int
+	Err      error
+	Source   string
+	BaseURL  string
+}
+
+func (f FailureMessage) Subject() string {
+	return fmt.Sprintf("clearsky FAILED to check tonight — Donvale (%s)", f.Date.Format("2 Jan"))
+}
+
+func (f FailureMessage) Body() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "⚠️ No decision for %s — the check failed and has stopped retrying.\n\n",
+		f.Date.Format("Mon 2 Jan"))
+	fmt.Fprintf(&b, "Attempts:  %d (backing off, until the retry deadline)\n", f.Attempts)
+	fmt.Fprintf(&b, "Source:    %s\n", f.Source)
+	fmt.Fprintf(&b, "Last error: %v\n\n", f.Err)
+	b.WriteString("There is NO row for tonight — this is not a NO-GO, it is no answer at all.\n")
+	if f.BaseURL != "" {
+		fmt.Fprintf(&b, "Check the sky yourself, and retry from %s if the provider has recovered.\n", f.BaseURL)
+	}
+	return b.String()
+}
+
 func packUpNote(r RainSummary) string {
 	if r.PackUpAt == "" {
 		return ""
@@ -121,12 +154,13 @@ type channel interface {
 // failures and never returns an error — a channel outage must not fail the job.
 type Notifier struct {
 	channels []channel
+	baseURL  string // included in failure messages so a manual re-run is one click away
 }
 
 // NewNotifier builds the channels enabled by config. Empty webhook / SMTP creds mean
 // that channel is simply omitted.
 func NewNotifier(cfg Config) *Notifier {
-	n := &Notifier{}
+	n := &Notifier{baseURL: cfg.BaseURL}
 	if cfg.DiscordWebhookURL != "" {
 		n.channels = append(n.channels, &discordChannel{webhookURL: cfg.DiscordWebhookURL})
 	}
@@ -144,16 +178,29 @@ func (n *Notifier) Enabled() bool { return len(n.channels) > 0 }
 
 // Notify sends the message to all channels. Returns nil always; failures are logged.
 func (n *Notifier) Notify(ctx context.Context, m Message) {
+	n.fanout(ctx, m.Subject(), m.Body(), m.Date)
+}
+
+// NotifyFailure reports a night that could not be evaluated at all.
+func (n *Notifier) NotifyFailure(ctx context.Context, f FailureMessage) {
+	f.BaseURL = n.baseURL
+	n.fanout(ctx, f.Subject(), f.Body(), f.Date)
+}
+
+func (n *Notifier) fanout(ctx context.Context, subject, body string, date time.Time) {
 	if len(n.channels) == 0 {
 		slog.Debug("no notification channels configured; skipping")
 		return
 	}
-	subject, body := m.Subject(), m.Body()
+	// The caller's context may already be cancelled (shutdown) or carry the failed run's
+	// deadline; give the send its own budget so the alert still gets out.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
 	for _, c := range n.channels {
 		if err := c.send(ctx, subject, body); err != nil {
 			slog.Error("notification failed", "channel", c.name(), "err", err)
 			continue
 		}
-		slog.Info("notification sent", "channel", c.name(), "date", m.Date.Format("2006-01-02"))
+		slog.Info("notification sent", "channel", c.name(), "date", date.Format("2006-01-02"))
 	}
 }

@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log"
 	"log/slog"
@@ -44,7 +45,13 @@ func main() {
 			fatal("test-notify", errNoChannels)
 		}
 		notifier.Notify(context.Background(), demoMessage(loc))
-		slog.Info("test notification dispatched")
+		// Also send the failure alert. It only fires during a provider outage, which is
+		// exactly when you cannot afford to discover the channel was misconfigured.
+		notifier.NotifyFailure(context.Background(), FailureMessage{
+			Date: time.Now().In(loc), Attempts: 5, Source: "test",
+			Err: errors.New("TEST MESSAGE — fetch forecast: all sources failed: [ecmwf gfs icon]"),
+		})
+		slog.Info("test notifications dispatched (one GO sample, one failure sample)")
 		return
 	}
 
@@ -64,9 +71,11 @@ func main() {
 	source := buildSource(cfg)
 	notifier := NewNotifier(cfg)
 	runner := NewRunner(q, source, notifier, cfg, loc)
-	scheduler := NewScheduler(runner, q, loc, cfg.RunHour, cfg.RunMinute)
+	scheduler := NewScheduler(runner, q, notifier, loc, cfg.RunHour, cfg.RunMinute, cfg.Retry)
 
 	slog.Info("weather source", "mode", cfg.Source, "name", source.Name())
+	slog.Info("retry policy", "first", cfg.Retry.First.String(), "max", cfg.Retry.Max.String(),
+		"until_hour", cfg.Retry.UntilHour)
 	slog.Info("notifications", "enabled", notifier.Enabled(), "channels", len(notifier.channels))
 
 	// Catch up on today's decision if we missed the scheduled time, then run the

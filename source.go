@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"io"
+	"strings"
 	"time"
 )
 
@@ -12,6 +14,25 @@ import (
 type Source interface {
 	Name() string
 	Fetch(ctx context.Context, lat, lon float64) (Forecast, error)
+}
+
+// bodySnippet reads the first few hundred bytes of an error response for inclusion in
+// the returned error. Providers explain themselves in the body — Open-Meteo answers
+// {"error":true,"reason":"…"} — and formatting only the status code throws that away.
+//
+// This is not cosmetic. On 2026-08-04..07 every nightly run died on "open-meteo status
+// 503" with no further detail, and the reason had to be reconstructed from the pattern
+// of failure timestamps days later. Log what the server actually said.
+func bodySnippet(r io.Reader) string {
+	b, err := io.ReadAll(io.LimitReader(r, 512))
+	if err != nil || len(b) == 0 {
+		return "(no body)"
+	}
+	s := strings.Join(strings.Fields(string(b)), " ") // collapse newlines/indentation
+	if len(s) > 200 {
+		s = s[:200] + "…"
+	}
+	return s
 }
 
 // Forecast is a provider-neutral hourly forecast. Hours covers the whole returned

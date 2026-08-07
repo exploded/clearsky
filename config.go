@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds runtime configuration, sourced entirely from environment variables
@@ -21,6 +22,8 @@ type Config struct {
 	Lat            float64 // observing site latitude
 	Lon            float64 // observing site longitude
 	CatchupOnStart bool    // on boot, run today's job if no row exists yet
+
+	Retry RetryPolicy
 
 	// Weather source selection: "agreement" (Open-Meteo AND yr.no must both be clear),
 	// "open-meteo", or "met-no".
@@ -42,6 +45,22 @@ type Config struct {
 	SMTPUser          string
 	SMTPPass          string
 	EmailTo           string
+}
+
+// RetryPolicy governs what happens when a night's run fails. The forecast APIs are
+// free and occasionally unavailable, and the nightly job hits them at one fixed instant
+// every day — so a provider that is reliably sick at that instant costs every night, not
+// a random few. Between 4 and 7 Aug 2026 Open-Meteo returned 503 to all three models at
+// exactly 08:00 UTC (= the 18:00 Melbourne fire time) and four consecutive nights were
+// lost, because the scheduler made one attempt and slept until tomorrow.
+//
+// Retries back off (First, doubling, capped at Max) and stop at UntilHour local — late
+// enough to outlast a long outage, early enough that the answer still describes a night
+// you could act on.
+type RetryPolicy struct {
+	First     time.Duration // wait before the first retry
+	Max       time.Duration // ceiling on the doubling backoff
+	UntilHour int           // stop retrying at this local hour (24h clock)
 }
 
 // Thresholds are the tunable decision rules (all env-driven). Moon is never here —
@@ -78,6 +97,11 @@ func FromEnv() Config {
 		Lat:            lat,
 		Lon:            lon,
 		CatchupOnStart: getenvBool("CLEARSKY_CATCHUP_ON_START", true),
+		Retry: RetryPolicy{
+			First:     getenvDuration("CLEARSKY_RETRY_FIRST", 2*time.Minute),
+			Max:       getenvDuration("CLEARSKY_RETRY_MAX", 30*time.Minute),
+			UntilHour: getenvInt("CLEARSKY_RETRY_UNTIL_HOUR", 23),
+		},
 		Source:         getenv("CLEARSKY_SOURCE", "agreement"),
 		MetnoUserAgent: getenv("CLEARSKY_METNO_USER_AGENT", "clearsky-astro/1.0 (+https://deepspaceplace.com)"),
 		// ClearOutside serves a public forecast PNG keyed by lat/lon (2 decimals).
@@ -119,6 +143,22 @@ func getenvInt(k string, def int) int {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
 		}
+	}
+	return def
+}
+
+// getenvDuration parses a Go duration string ("90s", "2m30s"). A bare number is read as
+// minutes, since every duration this app configures is on that scale.
+func getenvDuration(k string, def time.Duration) time.Duration {
+	v := os.Getenv(k)
+	if v == "" {
+		return def
+	}
+	if d, err := time.ParseDuration(v); err == nil && d > 0 {
+		return d
+	}
+	if n, err := strconv.Atoi(v); err == nil && n > 0 {
+		return time.Duration(n) * time.Minute
 	}
 	return def
 }

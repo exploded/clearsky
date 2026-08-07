@@ -30,6 +30,9 @@ func NewRunner(q *store.Queries, src Source, notifier *Notifier, cfg Config, loc
 	return &Runner{q: q, src: src, notifier: notifier, cfg: cfg, loc: loc}
 }
 
+// SourceName reports the configured weather source, for logs and failure alerts.
+func (r *Runner) SourceName() string { return r.src.Name() }
+
 // RunForDate evaluates the night whose evening falls on date (interpreted in the site
 // timezone) and returns the decision.
 func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error) {

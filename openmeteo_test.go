@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -42,4 +45,42 @@ func TestOpenMeteoLive(t *testing.T) {
 	within := fc.HoursWithin(d.Dusk, d.Dawn)
 	t.Logf("tonight: dusk=%s dawn=%s hours-in-window=%d",
 		d.Dusk.Format("15:04"), d.Dawn.Format("Mon 15:04"), len(within))
+}
+
+// A non-200 must carry the provider's stated reason into the error. The four nights
+// lost in Aug 2026 all failed with a bare "open-meteo status 503"; whatever the body
+// said went unread, and the cause had to be inferred from timestamps afterwards.
+func TestOpenMeteoErrorIncludesResponseBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"error":true,"reason":"API temporarily unavailable\n  during model update"}`))
+	}))
+	defer srv.Close()
+
+	om := NewOpenMeteoModel("Australia/Melbourne", "ecmwf_ifs025", "ecmwf")
+	om.baseURL = srv.URL
+	_, err := om.Fetch(context.Background(), testLat, testLon)
+	if err == nil {
+		t.Fatal("expected an error on 503")
+	}
+	if !strings.Contains(err.Error(), "503") {
+		t.Errorf("error should name the status: %v", err)
+	}
+	if !strings.Contains(err.Error(), "API temporarily unavailable") {
+		t.Errorf("error should carry the provider's reason: %v", err)
+	}
+	// Newlines would break the one-line-per-event journal format.
+	if strings.Contains(err.Error(), "\n") {
+		t.Errorf("error must stay single-line for logging: %q", err)
+	}
+}
+
+func TestBodySnippetTruncatesAndHandlesEmpty(t *testing.T) {
+	if got := bodySnippet(strings.NewReader("")); got != "(no body)" {
+		t.Errorf("empty body: got %q", got)
+	}
+	long := bodySnippet(strings.NewReader(strings.Repeat("x", 900)))
+	if len([]rune(long)) > 201 {
+		t.Errorf("snippet not truncated: %d runes", len([]rune(long)))
+	}
 }

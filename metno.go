@@ -67,7 +67,7 @@ func (m *MetNo) Fetch(ctx context.Context, lat, lon float64) (Forecast, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return Forecast{}, fmt.Errorf("met.no status %d (check User-Agent)", resp.StatusCode)
+		return Forecast{}, fmt.Errorf("met.no status %d (check User-Agent): %s", resp.StatusCode, bodySnippet(resp.Body))
 	}
 
 	var body metNoResponse

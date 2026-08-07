@@ -89,6 +89,21 @@ templates/ static/ migrations/ queries/ store/
 - `HoursWithin` floors the start to the local hour so an hourly bucket that *overlaps*
   dusk is kept — a strict compare silently dropped the first hour of nearly every
   night (dusk 19:02 discarding all of 19:00).
+- **A failed run is retried, never skipped.** The nightly job hits free APIs at one
+  fixed instant, so a provider that is sick at that instant costs *every* night rather
+  than a random few. On 2026-08-04..07 Open-Meteo returned 503 to all three models at
+  exactly 08:00 UTC — the 18:00 Melbourne fire time — and four consecutive nights
+  recorded nothing, because the scheduler made one attempt and slept till tomorrow.
+  `runWithRetry` now backs off (`CLEARSKY_RETRY_FIRST` doubling to `_MAX`) until
+  `CLEARSKY_RETRY_UNTIL_HOUR`, then sends a **failure notification**. Silence used to be
+  indistinguishable from a quiet NO-GO night; it no longer is.
+- **Missed nights are never backfilled, and must not be.** Catch-up only ever runs
+  *today*. The forecast APIs serve the present forward, so re-running an older date
+  returns no hours inside that night's darkness window and would persist a fabricated
+  "no usable hours" NO-GO for a night nobody observed. A missing row is the honest record.
+- **Log what the provider actually said.** Non-200s carry a `bodySnippet` of the response
+  body (Open-Meteo answers `{"error":true,"reason":…}`). The bare `open-meteo status 503`
+  the app used to log cost days of guesswork.
 - **Moon data never affects the decision** — it is display-only (`MoonInfo.Note()`
   captions what the moon means for target choice). All thresholds are tunable via
   `CLEARSKY_*` env vars (no recompile).
