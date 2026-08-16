@@ -35,3 +35,6 @@ SELECT COUNT(*) FROM subscribers;
 -- Sign-ups that never confirmed. Purged so an abused form cannot fill the table.
 -- updated_at, not created_at: a re-submission rotates the token and restarts the clock.
 DELETE FROM subscribers WHERE confirmed_at IS NULL AND updated_at < ?;
+
+-- name: CountConfirmedSubscribers :one
+SELECT COUNT(*) FROM subscribers WHERE confirmed_at IS NOT NULL;

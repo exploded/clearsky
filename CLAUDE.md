@@ -134,7 +134,8 @@ templates/ static/ migrations/ queries/ store/
   A stranger re-submitting a *confirmed* address must NOT be able to change its
   webhook — the row is left alone and the inbox owner gets a notice instead. The form
   response is identical either way (never leaks membership). Subscribers get GO alerts
-  only; failure alerts stay on the owner channels.
+  only; failure alerts and the "new subscriber confirmed" ping (`Subscriptions.OnConfirmed`
+  → `Notifier.NotifySubscriberConfirmed`, wired in main) stay on the owner channels.
 - The subscribe form is public: per-IP limiter (5/h), 10-min per-address cooldown on
   system mail, honeypot, `CLEARSKY_MAX_SUBSCRIBERS` cap, 48 h stale-pending purge, and
   webhooks are whitelisted to `discord.com/api/webhooks/…` (the app POSTs to them, so

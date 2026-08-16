@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"clearsky/store"
 )
 
 // errNoChannels is returned by the -test-notify path when nothing is configured.
@@ -195,6 +197,22 @@ func (n *Notifier) Notify(ctx context.Context, m Message) {
 func (n *Notifier) NotifyFailure(ctx context.Context, f FailureMessage) {
 	f.BaseURL = n.baseURL
 	n.fanout(ctx, f.Subject(), f.Body(), f.Date)
+}
+
+// NotifySubscriberConfirmed tells the owner that someone has joined the list. Owner
+// channels only. It runs in the background so the subscriber's confirmation page is
+// not held up by the owner's Discord round-trip.
+func (n *Notifier) NotifySubscriberConfirmed(ctx context.Context, sub store.Subscriber, confirmedTotal int64) {
+	subject := fmt.Sprintf("New clearsky subscriber: %s", sub.Email)
+	var b strings.Builder
+	fmt.Fprintf(&b, "📬 %s just confirmed their subscription.\n", sub.Email)
+	if sub.DiscordWebhook != "" {
+		b.WriteString("Discord:   yes (webhook given)\n")
+	} else {
+		b.WriteString("Discord:   no\n")
+	}
+	fmt.Fprintf(&b, "Confirmed subscribers now: %d\n", confirmedTotal)
+	go n.fanout(ctx, subject, b.String(), time.Now())
 }
 
 func (n *Notifier) fanout(ctx context.Context, subject, body string, date time.Time) {

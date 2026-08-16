@@ -68,7 +68,8 @@ Donvale, and a GO here says nothing about anyone else's sky.
   purge, and webhooks restricted to `discord.com/api/webhooks/…`. The form's response
   never reveals whether an address is already on the list.
 - Subscribers get **GO alerts only** — not NO-GO nights, and not the owner's
-  "check failed" ops alerts.
+  "check failed" ops alerts. The owner channels get a short "new subscriber" ping
+  each time someone confirms.
 - Local dev: `CLEARSKY_MAIL_DRY_RUN=true` enables the flow without SES and prints the
   emails (with their confirm/unsubscribe links) to the log.
 

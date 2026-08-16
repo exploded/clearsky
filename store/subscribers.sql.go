@@ -25,6 +25,17 @@ func (q *Queries) ConfirmSubscriber(ctx context.Context, arg ConfirmSubscriberPa
 	return q.db.ExecContext(ctx, confirmSubscriber, arg.ConfirmedAt, arg.UpdatedAt, arg.Token)
 }
 
+const countConfirmedSubscribers = `-- name: CountConfirmedSubscribers :one
+SELECT COUNT(*) FROM subscribers WHERE confirmed_at IS NOT NULL
+`
+
+func (q *Queries) CountConfirmedSubscribers(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countConfirmedSubscribers)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countSubscribers = `-- name: CountSubscribers :one
 SELECT COUNT(*) FROM subscribers
 `

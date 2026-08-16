@@ -11,6 +11,7 @@ import (
 
 type Querier interface {
 	ConfirmSubscriber(ctx context.Context, arg ConfirmSubscriberParams) (sql.Result, error)
+	CountConfirmedSubscribers(ctx context.Context) (int64, error)
 	CountSubscribers(ctx context.Context) (int64, error)
 	CreateSubscriber(ctx context.Context, arg CreateSubscriberParams) error
 	DeleteSubscriberByToken(ctx context.Context, token string) (sql.Result, error)

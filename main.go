@@ -95,6 +95,9 @@ func main() {
 		subs = NewSubscriptions(q, cfg.mailer(), cfg)
 	}
 	notifier := NewNotifier(cfg, subs)
+	if subs != nil {
+		subs.OnConfirmed = notifier.NotifySubscriberConfirmed
+	}
 	runner := NewRunner(q, source, notifier, cfg, loc)
 	scheduler := NewScheduler(runner, q, notifier, loc, cfg.RunHour, cfg.RunMinute, cfg.Retry)
 

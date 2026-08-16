@@ -38,6 +38,11 @@ type Subscriptions struct {
 	now     func() time.Time
 	// discord builds the poster for a subscriber's webhook; swapped in tests.
 	discord func(webhookURL string) channel
+
+	// OnConfirmed, if set, is called once when a subscription is first confirmed — the
+	// owner's "someone joined" ping. Wired by main after the Notifier exists (the two
+	// reference each other, so neither can construct the other).
+	OnConfirmed func(ctx context.Context, sub store.Subscriber, confirmedTotal int64)
 }
 
 const (
@@ -202,6 +207,13 @@ func (s *Subscriptions) Confirm(ctx context.Context, token string) (ConfirmResul
 	slog.Info("subscriber confirmed", "email", sub.Email, "discord", sub.DiscordWebhook != "")
 
 	out := ConfirmResult{Sub: sub}
+	if s.OnConfirmed != nil {
+		total, err := s.q.CountConfirmedSubscribers(ctx)
+		if err != nil {
+			slog.Warn("count confirmed subscribers", "err", err)
+		}
+		s.OnConfirmed(ctx, sub, total)
+	}
 	if sub.DiscordWebhook != "" {
 		body := fmt.Sprintf("Forecast is for Donvale, VIC — Melbourne skies only. NO-GO nights stay quiet.\nLog: %s\n", s.baseURL)
 		if err := s.discord(sub.DiscordWebhook).send(ctx, "✅ clearsky will post Melbourne GO alerts here", body); err != nil {

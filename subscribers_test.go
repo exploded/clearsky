@@ -101,11 +101,23 @@ func TestSubscribeConfirmBroadcastUnsubscribe(t *testing.T) {
 		t.Fatalf("pending subscriber was emailed an alert: %d sends", len(mailer.sent))
 	}
 
-	// Confirm → hello on Discord, and the row is live.
+	// Confirm → hello on Discord, owner hook fires once, and the row is live.
+	var hookCalls int
+	var hookTotal int64
+	s.OnConfirmed = func(_ context.Context, sub store.Subscriber, total int64) {
+		hookCalls++
+		hookTotal = total
+		if sub.Email != "astro@example.com" {
+			t.Errorf("hook got %q", sub.Email)
+		}
+	}
 	token := tokenFrom(t, conf.Body, "/subscribe/confirm")
 	res, err := s.Confirm(ctx, token)
 	if err != nil {
 		t.Fatalf("confirm: %v", err)
+	}
+	if hookCalls != 1 || hookTotal != 1 {
+		t.Errorf("OnConfirmed calls=%d total=%d, want 1/1", hookCalls, hookTotal)
 	}
 	if sub := res.Sub; !sub.ConfirmedAt.Valid || sub.Email != "astro@example.com" || res.DiscordErr != nil {
 		t.Errorf("confirmed row: %+v (discord err %v)", sub, res.DiscordErr)
@@ -113,9 +125,12 @@ func TestSubscribeConfirmBroadcastUnsubscribe(t *testing.T) {
 	if disc.sent != 1 || !strings.Contains(disc.lastSub, "clearsky will post") {
 		t.Errorf("expected discord hello, got sent=%d sub=%q", disc.sent, disc.lastSub)
 	}
-	// Second click is harmless.
+	// Second click is harmless and does not re-ping the owner.
 	if _, err := s.Confirm(ctx, token); err != nil {
 		t.Errorf("re-confirm: %v", err)
+	}
+	if hookCalls != 1 {
+		t.Errorf("OnConfirmed fired again on re-confirm: %d", hookCalls)
 	}
 
 	// Broadcast → email with unsubscribe footer + headers, and a Discord post.
