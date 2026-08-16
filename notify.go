@@ -10,7 +10,7 @@ import (
 )
 
 // errNoChannels is returned by the -test-notify path when nothing is configured.
-var errNoChannels = errors.New("no notification channels configured (set CLEARSKY_DISCORD_WEBHOOK_URL and/or CLEARSKY_SMTP_* )")
+var errNoChannels = errors.New("no owner notification channels configured (set CLEARSKY_DISCORD_WEBHOOK_URL and/or CLEARSKY_EMAIL_TO + CLEARSKY_SES_*)")
 
 // Message is everything needed to render a notification for one night.
 type Message struct {
@@ -150,38 +150,48 @@ type channel interface {
 	send(ctx context.Context, subject, body string) error
 }
 
-// Notifier fans a message out to every configured channel. It logs per-channel
-// failures and never returns an error — a channel outage must not fail the job.
+// Notifier fans a message out to the owner's channels and, for GO nights, to every
+// confirmed public subscriber. It logs per-channel failures and never returns an error
+// — a channel outage must not fail the job.
 type Notifier struct {
 	channels []channel
-	baseURL  string // included in failure messages so a manual re-run is one click away
+	subs     *Subscriptions // nil when SES is not configured
+	baseURL  string         // included in failure messages so a manual re-run is one click away
 }
 
-// NewNotifier builds the channels enabled by config. Empty webhook / SMTP creds mean
-// that channel is simply omitted.
-func NewNotifier(cfg Config) *Notifier {
-	n := &Notifier{baseURL: cfg.BaseURL}
+// NewNotifier builds the owner channels enabled by config plus, when SES is configured,
+// the subscriber fanout. An empty webhook means no Discord; EmailTo without SES is
+// logged and dropped rather than silently doing nothing.
+func NewNotifier(cfg Config, subs *Subscriptions) *Notifier {
+	n := &Notifier{baseURL: cfg.BaseURL, subs: subs}
 	if cfg.DiscordWebhookURL != "" {
 		n.channels = append(n.channels, &discordChannel{webhookURL: cfg.DiscordWebhookURL})
 	}
-	if cfg.SMTPUser != "" && cfg.SMTPPass != "" && cfg.EmailTo != "" {
-		n.channels = append(n.channels, &emailChannel{
-			host: cfg.SMTPHost, port: cfg.SMTPPort,
-			user: cfg.SMTPUser, pass: cfg.SMTPPass, to: cfg.EmailTo,
-		})
+	if cfg.EmailTo != "" {
+		if cfg.SubscribersEnabled() {
+			n.channels = append(n.channels, &emailChannel{to: cfg.EmailTo, mailer: cfg.mailer()})
+		} else {
+			slog.Warn("CLEARSKY_EMAIL_TO is set but SES is not configured; owner email disabled")
+		}
 	}
 	return n
 }
 
-// Enabled reports whether any channel is configured.
-func (n *Notifier) Enabled() bool { return len(n.channels) > 0 }
+// Enabled reports whether anything can be notified: an owner channel, or a
+// subscriber list (which may currently be empty — that is still worth a send attempt,
+// and it keeps notified_at honest).
+func (n *Notifier) Enabled() bool { return len(n.channels) > 0 || n.subs != nil }
 
-// Notify sends the message to all channels. Returns nil always; failures are logged.
+// Notify sends a GO alert to the owner's channels and every confirmed subscriber.
 func (n *Notifier) Notify(ctx context.Context, m Message) {
 	n.fanout(ctx, m.Subject(), m.Body(), m.Date)
+	if n.subs != nil {
+		n.subs.Broadcast(ctx, m)
+	}
 }
 
-// NotifyFailure reports a night that could not be evaluated at all.
+// NotifyFailure reports a night that could not be evaluated at all. Owner channels
+// only — it is an ops alert ("go retry it"), not something subscribers can act on.
 func (n *Notifier) NotifyFailure(ctx context.Context, f FailureMessage) {
 	f.BaseURL = n.baseURL
 	n.fanout(ctx, f.Subject(), f.Body(), f.Date)
@@ -189,7 +199,7 @@ func (n *Notifier) NotifyFailure(ctx context.Context, f FailureMessage) {
 
 func (n *Notifier) fanout(ctx context.Context, subject, body string, date time.Time) {
 	if len(n.channels) == 0 {
-		slog.Debug("no notification channels configured; skipping")
+		slog.Debug("no owner notification channels configured; skipping")
 		return
 	}
 	// The caller's context may already be cancelled (shutdown) or carry the failed run's

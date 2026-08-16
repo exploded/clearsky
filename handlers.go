@@ -25,10 +25,15 @@ const pageSize = 60
 type App struct {
 	q       *store.Queries
 	runner  *Runner
+	subs    *Subscriptions // nil when SES is not configured → subscribe UI hidden, routes 404
 	loc     *time.Location
-	tmpl    *template.Template
 	tonight TonightPanel
 	proxy   *imgProxy
+
+	// One template set per page, each a clone of the base layout, so every page can
+	// define its own "content" block without clobbering the others.
+	tmplNights  *template.Template // log page + its HTMX fragments (rows, subscribe form)
+	tmplMessage *template.Template // one-paragraph result pages (confirm / unsubscribe)
 }
 
 // TonightPanel holds the external "eyeball" images embedded at the top of the page.
@@ -41,8 +46,17 @@ type TonightPanel struct {
 }
 
 // NewApp builds the app and parses the embedded templates.
-func NewApp(q *store.Queries, runner *Runner, loc *time.Location, cfg Config) (*App, error) {
-	tmpl, err := template.New("").Funcs(template.FuncMap{}).ParseFS(templatesFS, "templates/*.html")
+func NewApp(q *store.Queries, runner *Runner, subs *Subscriptions, loc *time.Location, cfg Config) (*App, error) {
+	base, err := template.New("").Funcs(template.FuncMap{}).ParseFS(templatesFS, "templates/base.html")
+	if err != nil {
+		return nil, err
+	}
+	tmplNights, err := template.Must(base.Clone()).ParseFS(templatesFS,
+		"templates/nights.html", "templates/night_row.html", "templates/_subscribe.html")
+	if err != nil {
+		return nil, err
+	}
+	tmplMessage, err := template.Must(base.Clone()).ParseFS(templatesFS, "templates/message.html")
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +69,8 @@ func NewApp(q *store.Queries, runner *Runner, loc *time.Location, cfg Config) (*
 		"yr":           cfg.YrMeteogramURL,
 	})
 	return &App{
-		q: q, runner: runner, loc: loc, tmpl: tmpl, proxy: proxy,
+		q: q, runner: runner, subs: subs, loc: loc, proxy: proxy,
+		tmplNights: tmplNights, tmplMessage: tmplMessage,
 		tonight: TonightPanel{
 			SourceMode:      cfg.Source,
 			ClearOutsideImg: "/img/clearoutside",
@@ -90,6 +105,15 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /nights/rows", a.handleRows)
 	mux.HandleFunc("POST /run", a.handleRun)
 
+	// Public opt-in alerts. Registered only when SES is configured; otherwise the form
+	// is hidden and these paths simply 404.
+	if a.subs != nil {
+		mux.HandleFunc("POST /subscribe", a.handleSubscribe)
+		mux.HandleFunc("GET /subscribe/confirm", a.handleConfirm)
+		mux.HandleFunc("GET /subscribe/unsubscribe", a.handleUnsubscribePage)
+		mux.HandleFunc("POST /subscribe/unsubscribe", a.handleUnsubscribe)
+	}
+
 	// Later seam — stubbed in v1. The DB columns and queries already exist, so these
 	// become working endpoints with a handler body and (for result) a UI form.
 	mux.HandleFunc("POST /nights/{date}/result", a.handleResultStub)
@@ -105,6 +129,7 @@ type pageData struct {
 	Nights     []NightView
 	NextBefore string
 	Tonight    *TonightPanel
+	Subscribe  *SubscribeForm // nil when subscriptions are off → section not rendered
 }
 
 // NightView is a template-ready projection of a store.Night.
@@ -150,8 +175,11 @@ func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 	data := a.buildPageData(nights)
 	data.Title = "clearsky — astrophotography nights"
 	data.Tonight = &a.tonight
+	if a.subs != nil {
+		data.Subscribe = &SubscribeForm{}
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := a.tmpl.ExecuteTemplate(w, "base", data); err != nil {
+	if err := a.tmplNights.ExecuteTemplate(w, "base", data); err != nil {
 		slog.Error("render index", "err", err)
 	}
 }
@@ -190,7 +218,7 @@ func (a *App) handleRows(w http.ResponseWriter, r *http.Request) {
 	}
 	data := a.buildPageData(nights)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := a.tmpl.ExecuteTemplate(w, "rows", data); err != nil {
+	if err := a.tmplNights.ExecuteTemplate(w, "rows", data); err != nil {
 		slog.Error("render rows", "err", err)
 	}
 }

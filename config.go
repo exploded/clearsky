@@ -38,13 +38,39 @@ type Config struct {
 
 	Thresholds Thresholds
 
-	// Notifications. Empty webhook / SMTP creds cleanly disable that channel.
+	// Owner notifications. An empty webhook disables Discord; EmailTo is sent via SES
+	// and so needs the SES block below.
 	DiscordWebhookURL string
-	SMTPHost          string
-	SMTPPort          int
-	SMTPUser          string
-	SMTPPass          string
 	EmailTo           string
+
+	// All email goes out through AWS SES: the owner's own alerts (EmailTo) and the
+	// public subscribers (opt-in GO alerts for other Melbourne imagers). All four SES
+	// values must be set for email to work and for the subscribe form to appear; the
+	// list feature is otherwise dormant. MaxSubscribers caps the table so the public
+	// form cannot run up the bill.
+	SESRegion          string
+	SESAccessKeyID     string
+	SESSecretAccessKey string
+	SESFrom            string // verified SES identity, e.g. "clearsky <alerts@mchugh.au>"
+	MaxSubscribers     int
+	MailDryRun         bool // dev only: log subscriber emails instead of sending via SES
+}
+
+// SubscribersEnabled reports whether the public subscribe flow is switched on: SES is
+// fully configured, or the dev dry-run switch is set.
+func (c Config) SubscribersEnabled() bool {
+	if c.MailDryRun {
+		return true
+	}
+	return c.SESRegion != "" && c.SESAccessKeyID != "" && c.SESSecretAccessKey != "" && c.SESFrom != ""
+}
+
+// mailer is the one email transport: SES, or the log in dry-run.
+func (c Config) mailer() Mailer {
+	if c.MailDryRun {
+		return logMailer{}
+	}
+	return newSESMailer(c)
 }
 
 // RetryPolicy governs what happens when a night's run fails. The forecast APIs are
@@ -123,11 +149,14 @@ func FromEnv() Config {
 			VisibilityMinM:  getenvInt("CLEARSKY_VIS_MIN_M", 20000),
 		},
 		DiscordWebhookURL: getenv("CLEARSKY_DISCORD_WEBHOOK_URL", ""),
-		SMTPHost:          getenv("CLEARSKY_SMTP_HOST", "smtp.gmail.com"),
-		SMTPPort:          getenvInt("CLEARSKY_SMTP_PORT", 587),
-		SMTPUser:          getenv("CLEARSKY_SMTP_USER", ""),
-		SMTPPass:          getenv("CLEARSKY_SMTP_PASS", ""),
 		EmailTo:           getenv("CLEARSKY_EMAIL_TO", ""),
+
+		SESRegion:          getenv("CLEARSKY_SES_REGION", "ap-southeast-2"),
+		SESAccessKeyID:     getenv("CLEARSKY_SES_ACCESS_KEY_ID", ""),
+		SESSecretAccessKey: getenv("CLEARSKY_SES_SECRET_ACCESS_KEY", ""),
+		SESFrom:            getenv("CLEARSKY_SES_FROM", ""),
+		MaxSubscribers:     getenvInt("CLEARSKY_MAX_SUBSCRIBERS", 200),
+		MailDryRun:         getenvBool("CLEARSKY_MAIL_DRY_RUN", false),
 	}
 }
 

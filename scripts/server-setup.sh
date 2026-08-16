@@ -17,7 +17,7 @@
 #   1. Add DNS A record clearsky.mchugh.au -> Linode IP
 #   2. Add a site block to /etc/caddy/Caddyfile proxying to 127.0.0.1:8994
 #      and run: sudo systemctl reload caddy
-#   3. Edit /var/www/clearsky/.env with real Discord/SMTP values
+#   3. Edit /var/www/clearsky/.env with real Discord/SES values
 #   4. systemctl enable --now clearsky
 
 set -e
@@ -62,11 +62,14 @@ CLEARSKY_CATCHUP_ON_START=true
 
 # --- Notifications (GO nights only). Leave blank to disable a channel. ---
 CLEARSKY_DISCORD_WEBHOOK_URL=
-CLEARSKY_SMTP_HOST=smtp.gmail.com
-CLEARSKY_SMTP_PORT=587
-CLEARSKY_SMTP_USER=
-CLEARSKY_SMTP_PASS=
 CLEARSKY_EMAIL_TO=
+
+# AWS SES: owner email above + public subscribers (form appears only when all four are set)
+CLEARSKY_SES_REGION=ap-southeast-2
+CLEARSKY_SES_ACCESS_KEY_ID=
+CLEARSKY_SES_SECRET_ACCESS_KEY=
+CLEARSKY_SES_FROM=
+CLEARSKY_MAX_SUBSCRIBERS=200
 ENV_TEMPLATE
     chown www-data:www-data "$ENV_FILE"
     chmod 600 "$ENV_FILE"
@@ -151,7 +154,7 @@ echo "Next manual steps:"
 echo "  1. DNS: point clearsky.mchugh.au A record at this server"
 echo "  2. Add the Caddy block above to /etc/caddy/Caddyfile, then:"
 echo "     sudo systemctl reload caddy"
-echo "  3. Edit $ENV_FILE with real CLEARSKY_DISCORD_WEBHOOK_URL / SMTP creds"
+echo "  3. Edit $ENV_FILE with real CLEARSKY_DISCORD_WEBHOOK_URL / CLEARSKY_SES_* creds"
 echo "  4. systemctl enable --now clearsky"
 echo ""
 echo "Existing GitHub Actions secrets (DEPLOY_HOST/USER/SSH_KEY) from other"

@@ -23,7 +23,8 @@ import (
 )
 
 func main() {
-	testNotify := flag.Bool("test-notify", false, "send a sample notification to all configured channels and exit")
+	testNotify := flag.Bool("test-notify", false, "send a sample notification to all configured owner channels and exit")
+	testEmail := flag.String("test-email", "", "send a sample subscriber GO alert via SES to this address and exit")
 	flag.Parse()
 
 	if err := LoadDotEnv(); err != nil {
@@ -38,9 +39,29 @@ func main() {
 		fatal("load timezone", err)
 	}
 
-	// -test-notify: verify webhook / SMTP setup without a database or scheduler.
+	// -test-email: verify the SES setup by sending one subscriber-style GO alert (with a
+	// dummy unsubscribe link) to a single address. Never touches real subscribers.
+	if *testEmail != "" {
+		if !cfg.SubscribersEnabled() {
+			fatal("test-email", errors.New("SES not configured (set CLEARSKY_SES_ACCESS_KEY_ID / _SECRET_ACCESS_KEY / _FROM)"))
+		}
+		to, err := normalizeEmail(*testEmail)
+		if err != nil {
+			fatal("test-email", err)
+		}
+		subs := NewSubscriptions(nil, cfg.mailer(), cfg)
+		m := demoMessage(loc)
+		e := subs.alertEmail(store.Subscriber{Email: to, Token: "TEST-TOKEN"}, m.Subject(), m.Body())
+		if err := subs.mailer.Send(context.Background(), e); err != nil {
+			fatal("test-email", err)
+		}
+		slog.Info("test subscriber alert sent", "via", subs.mailer.name(), "to", to, "from", cfg.SESFrom, "region", cfg.SESRegion)
+		return
+	}
+
+	// -test-notify: verify webhook / SES setup without a database or scheduler.
 	if *testNotify {
-		notifier := NewNotifier(cfg)
+		notifier := NewNotifier(cfg, nil)
 		if !notifier.Enabled() {
 			fatal("test-notify", errNoChannels)
 		}
@@ -69,14 +90,19 @@ func main() {
 	defer stop()
 
 	source := buildSource(cfg)
-	notifier := NewNotifier(cfg)
+	var subs *Subscriptions
+	if cfg.SubscribersEnabled() {
+		subs = NewSubscriptions(q, cfg.mailer(), cfg)
+	}
+	notifier := NewNotifier(cfg, subs)
 	runner := NewRunner(q, source, notifier, cfg, loc)
 	scheduler := NewScheduler(runner, q, notifier, loc, cfg.RunHour, cfg.RunMinute, cfg.Retry)
 
 	slog.Info("weather source", "mode", cfg.Source, "name", source.Name())
 	slog.Info("retry policy", "first", cfg.Retry.First.String(), "max", cfg.Retry.Max.String(),
 		"until_hour", cfg.Retry.UntilHour)
-	slog.Info("notifications", "enabled", notifier.Enabled(), "channels", len(notifier.channels))
+	slog.Info("notifications", "enabled", notifier.Enabled(), "owner_channels", len(notifier.channels),
+		"subscribers", subs != nil, "ses_region", cfg.SESRegion)
 
 	// Catch up on today's decision if we missed the scheduled time, then run the
 	// daily scheduler for the process lifetime.
@@ -85,7 +111,7 @@ func main() {
 	}
 	go scheduler.Run(ctx)
 
-	app, err := NewApp(q, runner, loc, cfg)
+	app, err := NewApp(q, runner, subs, loc, cfg)
 	if err != nil {
 		fatal("templates", err)
 	}

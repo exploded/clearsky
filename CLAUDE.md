@@ -19,9 +19,12 @@ Only two direct deps. Weather: Open-Meteo (ECMWF + GFS + ICON by name) and yr.no
 ## Build / test / run (Windows)
 ```
 go run .                  # serves http://localhost:8080, schedules the daily 18:00 check
-go run . -test-notify     # sends a sample message to every configured channel, then exits
+go run . -test-notify     # sends a sample message to every configured owner channel, then exits
+go run . -test-email a@b  # sends one subscriber-style alert via SES to a@b, then exits
 go test ./...
 ```
+Set `CLEARSKY_MAIL_DRY_RUN=true` in dev to enable the subscribe form without SES creds —
+emails (with their confirm/unsubscribe links) are printed to the log instead of sent.
 Copy `.env.example` → `.env` first (everything optional; Donvale defaults baked in).
 The log page has a "Run tonight's check now" button for on-demand runs.
 
@@ -37,8 +40,10 @@ agreement.go               per-source verdicts (who agreed, how far apart)
 astro.go                   dark window + moon (suncalc)
 decision.go                GO/NO-GO rules (usable-window search + cloud gate)
 runner.go / scheduler.go   fetch→decide→persist→notify; 18:00 timer + catch-up-on-boot
-notify*.go                 Discord webhook + Gmail SMTP fanout
-handlers.go / proxy.go     HTMX log page; image proxy for the Tonight panel
+notify*.go                 owner fanout: Discord webhook + email (via SES)
+mail.go / ses.go           Mailer interface + MIME builder; AWS SES v2 over HTTPS w/ SigV4
+subscribers.go             public opt-in list (sign-up → confirm → broadcast → unsubscribe)
+handlers.go / handlers_subscribe.go / proxy.go   HTMX log page + subscribe routes; image proxy
 templates/ static/ migrations/ queries/ store/
 ```
 
@@ -116,4 +121,25 @@ templates/ static/ migrations/ queries/ store/
   (schema columns + `MarkImaged` query already exist for later).
 - Timestamps/scheduling use `CLEARSKY_TZ` (default Australia/Melbourne); tzdata is
   embedded via `_ "time/tzdata"` so it works on Windows and the bare Linux box.
+- **Public subscribers go out via AWS SES with a hand-rolled SigV4 signer** (`ses.go`),
+  not the AWS SDK — the SDK would add a dozen modules to a two-dependency project, and
+  SES v2 over HTTPS also sidesteps Linode's outbound-SMTP-port block. `TestSignV4…`
+  pins the signer to AWS's published example; if it ever fails, the signer is wrong,
+  not the test. The form only renders (and routes only register) when `CLEARSKY_SES_*`
+  are all set (or `CLEARSKY_MAIL_DRY_RUN`). New SES accounts are sandboxed to verified
+  recipients — request production access before publicising the form.
+- **Subscribers are double opt-in and self-service.** One random `token` per row
+  authenticates both the confirm link and the unsubscribe link in every alert
+  (`List-Unsubscribe` + one-click POST headers too). Unsubscribe deletes the row.
+  A stranger re-submitting a *confirmed* address must NOT be able to change its
+  webhook — the row is left alone and the inbox owner gets a notice instead. The form
+  response is identical either way (never leaks membership). Subscribers get GO alerts
+  only; failure alerts stay on the owner channels.
+- The subscribe form is public: per-IP limiter (5/h), 10-min per-address cooldown on
+  system mail, honeypot, `CLEARSKY_MAX_SUBSCRIBERS` cap, 48 h stale-pending purge, and
+  webhooks are whitelisted to `discord.com/api/webhooks/…` (the app POSTs to them, so
+  anything else is an open relay).
+- Templates are **clone-per-page** (`tmplNights`, `tmplMessage` in `NewApp`) because
+  every page defines its own `content` block; add a new page by cloning `base` again,
+  not by adding another `{{define "content"}}` to the shared glob.
 - Never commit `.env` or `*.db*` (gitignored).

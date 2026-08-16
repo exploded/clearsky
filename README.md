@@ -2,7 +2,8 @@
 
 A personal astrophotography **go / no-go** app for Donvale, VIC. Each evening it checks
 tonight's forecast + moon, decides whether conditions suit imaging, logs the decision,
-and (on GO nights) pings Discord + email. It also serves a web log of past nights.
+and (on GO nights) pings Discord + email. It also serves a web log of past nights, where
+other Melbourne imagers can opt in to the same GO alerts (see [Subscribers](#subscribers)).
 
 ## How it decides
 
@@ -43,7 +44,33 @@ go run .                  # serves http://localhost:8080, runs the 6 PM check da
 
 - Open `/` for the log. The **“Run tonight's check now”** button runs it on demand.
 - Test your notification setup any time: `go run . -test-notify` sends a sample message
-  to every configured channel.
+  to every configured owner channel; `go run . -test-email you@example.com` sends one
+  subscriber-style alert through SES.
+
+## Subscribers
+
+The log page has a **Get GO alerts** form: an email address plus an optional Discord
+webhook. It is loudly labelled **Melbourne only** — the forecast is for one site in
+Donvale, and a GO here says nothing about anyone else's sky.
+
+- **Double opt-in.** Sign-up creates a pending row and emails a confirmation link (good
+  for 48 h). Nothing else is ever sent until the link is clicked. Confirming with a
+  webhook posts a hello to it, so a mistyped URL is caught on the spot.
+- **Unsubscribe in every email** — a footer link plus `List-Unsubscribe` /
+  `List-Unsubscribe-Post` headers so Gmail & co. show their own one-click button.
+  Unsubscribing deletes the row.
+- **Sent through AWS SES** (v2 API over HTTPS, SigV4 signed in-process — no SDK).
+  Configure `CLEARSKY_SES_*` in `.env`; the form only appears when SES is set up. New
+  SES accounts start in the sandbox (verified recipients only) — request production
+  access before opening the form to strangers.
+- **Abuse guards on the public form:** per-IP rate limit, a cooldown on system emails to
+  any one address, honeypot field, a cap (`CLEARSKY_MAX_SUBSCRIBERS`), stale-pending
+  purge, and webhooks restricted to `discord.com/api/webhooks/…`. The form's response
+  never reveals whether an address is already on the list.
+- Subscribers get **GO alerts only** — not NO-GO nights, and not the owner's
+  "check failed" ops alerts.
+- Local dev: `CLEARSKY_MAIL_DRY_RUN=true` enables the flow without SES and prints the
+  emails (with their confirm/unsubscribe links) to the log.
 
 ## Stack
 
@@ -62,8 +89,10 @@ Flat `package main` at the root; the one separate package is generated `store/` 
 | `decision.go` | GO/NO-GO rules (rain veto + cloud gate) |
 | `runner.go` | Fetch → decide → persist → notify (once per GO night) |
 | `scheduler.go` | 18:00 timer + catch-up-on-boot |
-| `notify*.go` | Discord webhook + Gmail SMTP fanout |
-| `handlers.go` + `templates/` | HTMX log page |
+| `notify*.go` | Owner fanout: Discord webhook + email (via SES) |
+| `mail.go` / `ses.go` | `Mailer` interface, MIME builder, AWS SES v2 + SigV4 signer |
+| `subscribers.go` | Public opt-in list: sign-up, confirm, unsubscribe, broadcast |
+| `handlers.go` / `handlers_subscribe.go` + `templates/` | HTMX log page + subscribe routes |
 
 ## Regenerate DB code after editing SQL
 

@@ -1,37 +1,16 @@
 package main
 
-import (
-	"context"
-	"fmt"
-	"net/smtp"
-	"strings"
-)
+import "context"
 
-// emailChannel sends a plaintext email via SMTP with PLAIN auth — designed for Gmail
-// using an app password (host smtp.gmail.com, port 587).
+// emailChannel is the owner's email notification: one fixed recipient over the SES
+// mailer (or the dry-run log mailer in dev).
 type emailChannel struct {
-	host string
-	port int
-	user string
-	pass string
-	to   string
+	mailer Mailer
+	to     string
 }
 
-func (e *emailChannel) name() string { return "email" }
+func (e *emailChannel) name() string { return "email/" + e.mailer.name() }
 
-func (e *emailChannel) send(_ context.Context, subject, body string) error {
-	addr := fmt.Sprintf("%s:%d", e.host, e.port)
-	auth := smtp.PlainAuth("", e.user, e.pass, e.host)
-
-	var msg strings.Builder
-	fmt.Fprintf(&msg, "From: %s\r\n", e.user)
-	fmt.Fprintf(&msg, "To: %s\r\n", e.to)
-	fmt.Fprintf(&msg, "Subject: %s\r\n", subject)
-	msg.WriteString("MIME-Version: 1.0\r\n")
-	msg.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
-	msg.WriteString("\r\n")
-	// Normalise to CRLF line endings for SMTP.
-	msg.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
-
-	return smtp.SendMail(addr, auth, e.user, []string{e.to}, []byte(msg.String()))
+func (e *emailChannel) send(ctx context.Context, subject, body string) error {
+	return e.mailer.Send(ctx, Email{To: e.to, Subject: subject, Body: body})
 }

@@ -10,6 +10,19 @@
   </div>
 </section>
 {{end}}
+{{with .Subscribe}}
+<section class="subscribe" id="subscribe">
+  <div class="sub-intro">
+    <h2>Get GO alerts <span class="mode melb">Melbourne only</span></h2>
+    <p class="hint">On nights that look good for imaging, get the same alert by email — and, if you like, posted to a Discord webhook of yours. NO-GO nights are silent.</p>
+    <p class="hint warn"><strong>This is for Melbourne skies only.</strong> The forecast is for one site in Donvale, on Melbourne's eastern edge. If you image from anywhere else, the call won't apply to your sky.</p>
+    <p class="hint">You'll get a confirmation email first, and every alert has an unsubscribe link.</p>
+  </div>
+  <div id="subscribe-form" class="sub-form-wrap">
+    {{template "subscribe_form" .}}
+  </div>
+</section>
+{{end}}
 {{if not .Nights}}
   <p class="empty">No nights logged yet. Click “Run tonight's check now” above, or wait for the 6&nbsp;PM check.</p>
 {{end}}

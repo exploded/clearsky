@@ -1,0 +1,12 @@
+{{define "content"}}
+<section class="msg {{.Tone}}">
+  <h2>{{.Heading}}</h2>
+  {{range .Lines}}<p>{{.}}</p>{{end}}
+  {{if .Action}}
+  <form method="post" action="{{.Action}}" class="msg-action">
+    <button type="submit">{{.ActionLabel}}</button>
+  </form>
+  {{end}}
+  <p class="back"><a href="/">← Back to the log</a></p>
+</section>
+{{end}}

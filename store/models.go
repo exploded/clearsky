@@ -32,3 +32,14 @@ type Night struct {
 	WindowJson   string        `json:"window_json"`
 	SourcesJson  string        `json:"sources_json"`
 }
+
+type Subscriber struct {
+	ID             int64         `json:"id"`
+	Email          string        `json:"email"`
+	DiscordWebhook string        `json:"discord_webhook"`
+	Token          string        `json:"token"`
+	ConfirmedAt    sql.NullInt64 `json:"confirmed_at"`
+	LastSentAt     int64         `json:"last_sent_at"`
+	CreatedAt      int64         `json:"created_at"`
+	UpdatedAt      int64         `json:"updated_at"`
+}

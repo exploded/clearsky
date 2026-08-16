@@ -1,0 +1,36 @@
+{{define "subscribe_form"}}
+{{if .Done}}
+<div class="sub-done" role="status">
+  <p><strong>Check your inbox.</strong>
+  If <em>{{.Email}}</em> isn't already subscribed, a confirmation email is on its way.
+  Nothing is sent until you click the link in it (it's good for 48 hours).</p>
+</div>
+{{else}}
+<form class="sub-form" method="post" action="/subscribe"
+      hx-post="/subscribe" hx-target="#subscribe-form" hx-swap="innerHTML" novalidate>
+  <div class="sub-field">
+    <label for="sub-email">Email <span class="req">required</span></label>
+    <input id="sub-email" name="email" type="email" inputmode="email" autocomplete="email"
+           placeholder="you@example.com" value="{{.Email}}" required
+           {{if .EmailErr}}aria-invalid="true" aria-describedby="sub-email-err"{{end}}>
+    <span class="err" id="sub-email-err">{{.EmailErr}}</span>
+  </div>
+  <div class="sub-field">
+    <label for="sub-webhook">Discord webhook <span class="opt">optional</span></label>
+    <input id="sub-webhook" name="discord_webhook" type="url" inputmode="url" autocomplete="off"
+           placeholder="https://discord.com/api/webhooks/…" value="{{.Webhook}}"
+           {{if .WebhookErr}}aria-invalid="true" aria-describedby="sub-webhook-err"{{end}}>
+    <span class="err" id="sub-webhook-err">{{.WebhookErr}}</span>
+  </div>
+  <!-- honeypot: hidden from people, irresistible to bots -->
+  <div class="hp" aria-hidden="true">
+    <label for="sub-website">Website</label>
+    <input id="sub-website" name="website" type="text" tabindex="-1" autocomplete="off">
+  </div>
+  <div class="sub-actions">
+    <button type="submit" hx-disabled-elt="this">Send confirmation email</button>
+    <span class="err form-err" role="alert">{{.FormErr}}</span>
+  </div>
+</form>
+{{end}}
+{{end}}

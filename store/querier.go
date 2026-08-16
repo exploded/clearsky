@@ -6,15 +6,30 @@ package store
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
+	ConfirmSubscriber(ctx context.Context, arg ConfirmSubscriberParams) (sql.Result, error)
+	CountSubscribers(ctx context.Context) (int64, error)
+	CreateSubscriber(ctx context.Context, arg CreateSubscriberParams) error
+	DeleteSubscriberByToken(ctx context.Context, token string) (sql.Result, error)
 	GetNight(ctx context.Context, nightDate string) (Night, error)
+	GetSubscriberByEmail(ctx context.Context, email string) (Subscriber, error)
+	GetSubscriberByToken(ctx context.Context, token string) (Subscriber, error)
+	ListConfirmedSubscribers(ctx context.Context) ([]Subscriber, error)
 	ListNights(ctx context.Context, arg ListNightsParams) ([]Night, error)
 	ListNightsBefore(ctx context.Context, arg ListNightsBeforeParams) ([]Night, error)
 	MarkImaged(ctx context.Context, arg MarkImagedParams) error
+	// Sign-ups that never confirmed. Purged so an abused form cannot fill the table.
+	// updated_at, not created_at: a re-submission rotates the token and restarts the clock.
+	PurgeStalePending(ctx context.Context, updatedAt int64) error
+	// A re-submission for an address that has not confirmed yet: take the newest webhook,
+	// rotate the token so the older confirmation link stops working, and restamp last_sent_at.
+	RefreshPendingSubscriber(ctx context.Context, arg RefreshPendingSubscriberParams) error
 	SetNightNina(ctx context.Context, arg SetNightNinaParams) error
 	SetNightNotified(ctx context.Context, arg SetNightNotifiedParams) error
+	TouchSubscriberSent(ctx context.Context, arg TouchSubscriberSentParams) error
 	// Insert or overwrite a night's decision + snapshot. Keyed by night_date, so a
 	// re-run for the same date updates the row rather than inserting a duplicate.
 	// created_at and notified_at are preserved on conflict.
