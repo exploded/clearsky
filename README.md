@@ -22,10 +22,20 @@ All thresholds are environment variables (see `.env.example`) — tune without r
 
 `CLEARSKY_SOURCE` selects the data behind the decision:
 
-- **`agreement`** (default) — fetches **Open-Meteo** and **yr.no** (MET Norway API, free,
-  keyless) and merges them pessimistically, so it's only a GO when *both* agree the sky is
-  clear and dry. The stored `source` reads e.g. `open-meteo+met-no`.
-- **`open-meteo`** / **`met-no`** — use a single provider.
+- **`agreement`** (default) — fetches **ECMWF**, **GFS** and **ICON** by name through
+  Open-Meteo (free, keyless) and merges them pessimistically, so it's only a GO when
+  *all three* agree the sky is clear and dry. Three models from three met centres,
+  chosen for independence: the original Open-Meteo + yr.no pairing turned out to be the
+  same model twice and so filtered nothing. The stored `source` reads `ecmwf+gfs+icon`.
+- **`ecmwf`** / **`gfs`** / **`icon`** — one named model on its own.
+- **`open-meteo`** / **`met-no`** — Open-Meteo's `best_match` blend, or yr.no. Kept for
+  comparison; neither is independent of ECMWF.
+
+Every model must answer. A fetch that loses one is an error, not a thinner answer, so it
+goes into the retry ladder — a partial outage used to sail through and decide the night
+with the cross-check silently switched off. Only when the retry deadline passes does the
+run fall back to whatever models are available; that night is then flagged **degraded**
+on the log page (`icon only · ecmwf, gfs missing`), in the GO alert, and by an ops alert.
 
 Adding another provider is one new file implementing the `Source` interface.
 

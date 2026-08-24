@@ -35,11 +35,15 @@ func TestNextFireAt(t *testing.T) {
 	}
 }
 
-// scriptedRunner fails the first failures attempts, then succeeds.
+// scriptedRunner fails the first failures attempts, then succeeds. degraded is what the
+// relaxed last-resort attempt returns; the zero value fails it too.
 type scriptedRunner struct {
-	failures int
-	calls    int
-	err      error
+	failures      int
+	calls         int
+	err           error
+	degraded      Result
+	degradedErr   error
+	degradedCalls int
 }
 
 func (r *scriptedRunner) SourceName() string { return "test-source" }
@@ -50,6 +54,14 @@ func (r *scriptedRunner) RunForDate(context.Context, time.Time) (Result, error) 
 		return Result{}, r.err
 	}
 	return Result{GO: true}, nil
+}
+
+func (r *scriptedRunner) RunDegraded(context.Context, time.Time) (Result, error) {
+	r.degradedCalls++
+	if r.degradedErr != nil {
+		return Result{}, r.degradedErr
+	}
+	return r.degraded, nil
 }
 
 // testScheduler wires a scheduler to a fake clock: sleeping advances the clock instead
@@ -107,7 +119,8 @@ func TestRunWithRetrySucceedsAfterTransientFailure(t *testing.T) {
 func TestRunWithRetryGivesUpAtDeadlineAndNotifies(t *testing.T) {
 	loc := mustMelbourne(t)
 	start := time.Date(2026, 8, 7, 18, 0, 0, 0, loc)
-	runner := &scriptedRunner{failures: 1000, err: errors.New("all sources failed: [ecmwf gfs icon]")}
+	outage := errors.New("all sources failed: [ecmwf gfs icon]")
+	runner := &scriptedRunner{failures: 1000, err: outage, degradedErr: outage}
 	s, slept, ch := testScheduler(t, runner, start)
 
 	s.runWithRetry(context.Background(), start)
@@ -138,6 +151,59 @@ func TestRunWithRetryGivesUpAtDeadlineAndNotifies(t *testing.T) {
 	}
 	if !strings.Contains(ch.lastBody, "ecmwf gfs icon") {
 		t.Errorf("failure body should carry the underlying error, got %q", ch.lastBody)
+	}
+}
+
+// When the quorum never returns but SOME model does, the deadline must record a flagged
+// decision rather than nothing. This is the 20 Aug 2026 night inverted: back then a lone
+// ICON run was silently accepted as normal; now it is only reached as a last resort, it
+// is labelled, and the owner is told the cross-check never happened.
+func TestRunWithRetryRecordsDegradedAtDeadline(t *testing.T) {
+	loc := mustMelbourne(t)
+	start := time.Date(2026, 8, 20, 18, 0, 0, 0, loc)
+	runner := &scriptedRunner{
+		failures: 1000,
+		err:      errors.New("only 1 of 3 models answered ([ecmwf gfs] failed); need 3"),
+		degraded: Result{
+			GO: true, Score: 73, Reason: "clear 01:00→05:30 — 5h usable, avg 13% cloud",
+			Source: "icon", Missing: []string{"ecmwf", "gfs"},
+		},
+	}
+	s, _, ch := testScheduler(t, runner, start)
+
+	s.runWithRetry(context.Background(), start)
+
+	if runner.degradedCalls != 1 {
+		t.Errorf("expected exactly one relaxed last-resort attempt, got %d", runner.degradedCalls)
+	}
+	if ch.sent != 1 {
+		t.Fatalf("a degraded night must still be reported to the owner; alerts sent = %d", ch.sent)
+	}
+	if !strings.Contains(ch.lastSub, "DEGRADED") {
+		t.Errorf("subject should name the degradation, got %q", ch.lastSub)
+	}
+	for _, want := range []string{"ecmwf, gfs", "icon", "GO"} {
+		if !strings.Contains(ch.lastBody, want) {
+			t.Errorf("degraded body missing %q, got:\n%s", want, ch.lastBody)
+		}
+	}
+	if strings.Contains(ch.lastBody, "No decision") {
+		t.Error("degraded night was recorded; it must not be reported as no decision at all")
+	}
+}
+
+// The relaxed attempt is a last resort, not a first one: it must never run while the
+// retry ladder still has time left on the clock.
+func TestRunWithRetryDoesNotRelaxBeforeDeadline(t *testing.T) {
+	loc := mustMelbourne(t)
+	start := time.Date(2026, 8, 20, 18, 0, 0, 0, loc)
+	runner := &scriptedRunner{failures: 2, err: errors.New("only 2 of 3 models answered")}
+	s, _, _ := testScheduler(t, runner, start)
+
+	s.runWithRetry(context.Background(), start)
+
+	if runner.degradedCalls != 0 {
+		t.Errorf("relaxed the quorum %d times before the deadline; a retry may still succeed at full strength", runner.degradedCalls)
 	}
 }
 

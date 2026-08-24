@@ -108,6 +108,44 @@ func TestSummarizeAgreementSingleSource(t *testing.T) {
 	}
 }
 
+// A night that lost models is not a single-provider night: the breakdown must survive
+// with one member, name the absentees, and label itself so nobody reads it as routine.
+func TestSummarizeAgreementDegraded(t *testing.T) {
+	loc := mustMelbourne(t)
+	dusk := time.Date(2026, 8, 20, 19, 0, 0, 0, loc)
+	dark := Darkness{Dusk: dusk, Dawn: dusk.Add(6 * time.Hour)}
+
+	fc := Forecast{
+		Source:  "icon",
+		Hours:   clearHours(dusk, 5, 13),
+		Members: []Forecast{{Source: "icon", Hours: clearHours(dusk, 5, 13)}},
+		Missing: []string{"ecmwf", "gfs"},
+	}
+	ag := summarizeAgreement(fc.InLocation(loc), dark, FromEnv().Thresholds)
+	if len(ag.Sources) != 1 {
+		t.Fatalf("expected the lone survivor to be recorded, got %d verdicts", len(ag.Sources))
+	}
+	if !ag.Degraded() {
+		t.Error("Degraded() = false for a run missing two of three models")
+	}
+	if got, want := ag.Label(), "icon only · ecmwf, gfs missing"; got != want {
+		t.Errorf("Label() = %q, want %q", got, want)
+	}
+	// InLocation must carry Missing through, or the flag dies before it is persisted.
+	if len(fc.InLocation(loc).Missing) != 2 {
+		t.Error("InLocation dropped Missing")
+	}
+
+	// A partial panel still shows the vote, plus what was absent from it.
+	partial := Agreement{
+		Sources: []SourceVerdict{{Name: "gfs", GO: true}, {Name: "icon"}},
+		GoCount: 1, Spread: 24, Missing: []string{"ecmwf"},
+	}
+	if got, want := partial.Label(), "1/2 agree · spread 24% · ecmwf missing"; got != want {
+		t.Errorf("partial Label() = %q, want %q", got, want)
+	}
+}
+
 // InLocation must restamp members too. A member left in UTC slices the wrong hours out
 // of the darkness window and would report "no usable hours" for a clear night.
 func TestInLocationRestampsMembers(t *testing.T) {
@@ -189,6 +227,25 @@ func TestNightRowSourcesCell(t *testing.T) {
 		if !strings.Contains(split, want) {
 			t.Errorf("split row missing %q", want)
 		}
+	}
+
+	// The third shape: a degraded night. It must be visually flagged and must list the
+	// models that never answered — 20 Aug 2026 rendered as an unremarkable "icon".
+	degraded := render(NightView{
+		Source:       "icon",
+		WindowLabel:  "01:00→05:30",
+		SourcesLabel: "icon only · ecmwf, gfs missing",
+		Degraded:     true,
+		Missing:      []string{"ecmwf", "gfs"},
+		Sources:      []SourceVerdict{{Name: "icon", GO: true, WindowLabel: "01:00→05:30", Hours: 5, WindowAvg: 13}},
+	})
+	for _, want := range []string{"agree degraded", "icon only", "ecmwf", "gfs", "no answer from the API"} {
+		if !strings.Contains(degraded, want) {
+			t.Errorf("degraded row missing %q", want)
+		}
+	}
+	if strings.Contains(degraded, "agree split") {
+		t.Error("a lone survivor cannot be 'split' — that would dilute the split flag")
 	}
 }
 

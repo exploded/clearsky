@@ -6,14 +6,21 @@
   <td class="reason">{{.Reason}}</td>
   <td class="src">
     {{if .Sources}}
-      <details class="agree{{if .Split}} split{{end}}">
-        <summary title="Each model decided this night on its own, with the same rules">{{.SourcesLabel}}</summary>
+      <details class="agree{{if .Split}} split{{end}}{{if .Degraded}} degraded{{end}}">
+        <summary title="{{if .Degraded}}Models that never answered cannot contradict the ones that did — this night was decided without the usual cross-check{{else}}Each model decided this night on its own, with the same rules{{end}}">{{.SourcesLabel}}</summary>
         <ul>
           {{range .Sources}}
             <li class="{{if .GO}}v-go{{else}}v-nogo{{end}}">
               <span class="m">{{.Name}}</span>
               <span class="v">{{if .GO}}GO{{else}}NO-GO{{end}}</span>
               <span class="d">{{if .Hours}}{{.WindowLabel}} · {{.Hours}}h · {{.WindowAvg}}%{{else}}no usable hours{{end}}</span>
+            </li>
+          {{end}}
+          {{range .Missing}}
+            <li class="v-missing">
+              <span class="m">{{.}}</span>
+              <span class="v">—</span>
+              <span class="d">no answer from the API</span>
             </li>
           {{end}}
         </ul>

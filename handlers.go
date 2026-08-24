@@ -163,7 +163,9 @@ type NightView struct {
 	// fall back to showing the bare source name.
 	Sources      []SourceVerdict
 	SourcesLabel string
-	Split        bool // sources disagreed — the row gets a visual flag
+	Split        bool     // sources disagreed — the row gets a visual flag
+	Degraded     bool     // ran on fewer models than configured — also flagged
+	Missing      []string // the models that never answered
 }
 
 func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -307,6 +309,8 @@ func (a *App) toView(n store.Night) NightView {
 		Sources:       agree.Sources,
 		SourcesLabel:  agree.Label(),
 		Split:         len(agree.Sources) > 0 && !agree.Unanimous(),
+		Degraded:      agree.Degraded(),
+		Missing:       agree.Missing,
 	}
 }
 

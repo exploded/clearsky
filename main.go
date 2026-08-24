@@ -178,7 +178,10 @@ func buildSource(cfg Config) Source {
 		for _, m := range agreementModels {
 			sources = append(sources, NewOpenMeteoModel(cfg.TZ, m.model, m.name))
 		}
-		return NewMultiSource(sources...)
+		// Every model must answer, unless explicitly told otherwise. A run on a subset
+		// is a run with the cross-check switched off, so it fails and gets retried
+		// rather than quietly deciding the night on whoever picked up.
+		return NewMultiSourceMin(cfg.MinSources, sources...)
 	}
 }
 

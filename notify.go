@@ -21,6 +21,12 @@ type Message struct {
 	Result Result
 	Dark   Darkness
 	Moon   MoonInfo
+
+	// Missing names configured models that did not answer. A GO built on a thinner
+	// panel than usual has to say so in the alert itself — that alert is the only part
+	// of this app anyone acts on at 6pm, and "[icon]" on its own does not read as a
+	// warning.
+	Missing []string
 }
 
 // Subject is the email subject line.
@@ -42,6 +48,10 @@ func (m Message) Body() string {
 	fmt.Fprintf(&b, "%s — Donvale (%s)   Score %d/100.  [%s]\n",
 		head, m.Date.Format("Mon 2 Jan"), m.Result.Score, m.Source)
 	fmt.Fprintf(&b, "%s\n\n", m.Result.Reason)
+	if len(m.Missing) > 0 {
+		fmt.Fprintf(&b, "⚠️ DEGRADED: %s did not answer — decided on %s alone, so the models were never cross-checked. Look up before you commit.\n\n",
+			strings.Join(m.Missing, ", "), m.Source)
+	}
 
 	w := m.Result.Window
 	if w.Hours > 0 {
@@ -72,19 +82,36 @@ func (m Message) Body() string {
 // a NO-GO night sat quietly in the log, and a night whose forecast fetch died looked
 // exactly like the latter. Four consecutive nights were lost that way in Aug 2026. A
 // broken check is now as loud as a good night.
+// It doubles as the DEGRADED report: same deadline, but a reduced set of models did
+// answer and their decision was recorded. That is not a failure — it is a night worth
+// treating with suspicion, and it is still an ops alert rather than something to push
+// at subscribers.
 type FailureMessage struct {
 	Date     time.Time
 	Attempts int
 	Err      error
 	Source   string
 	BaseURL  string
+
+	// Degraded, when set, means a row WAS written from the models in Source, with
+	// Missing absent. Err is then the last quorum failure that forced the fallback.
+	Degraded bool
+	Missing  []string
+	Result   Result
 }
 
 func (f FailureMessage) Subject() string {
+	if f.Degraded {
+		return fmt.Sprintf("clearsky ran DEGRADED tonight (%s missing) — Donvale (%s)",
+			strings.Join(f.Missing, ", "), f.Date.Format("2 Jan"))
+	}
 	return fmt.Sprintf("clearsky FAILED to check tonight — Donvale (%s)", f.Date.Format("2 Jan"))
 }
 
 func (f FailureMessage) Body() string {
+	if f.Degraded {
+		return f.degradedBody()
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "⚠️ No decision for %s — the check failed and has stopped retrying.\n\n",
 		f.Date.Format("Mon 2 Jan"))
@@ -94,6 +121,25 @@ func (f FailureMessage) Body() string {
 	b.WriteString("There is NO row for tonight — this is not a NO-GO, it is no answer at all.\n")
 	if f.BaseURL != "" {
 		fmt.Fprintf(&b, "Check the sky yourself, and retry from %s if the provider has recovered.\n", f.BaseURL)
+	}
+	return b.String()
+}
+
+// degradedBody reports a night that was decided, but on fewer models than configured.
+func (f FailureMessage) degradedBody() string {
+	verdict := "NO-GO"
+	if f.Result.GO {
+		verdict = "GO"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "⚠️ %s for %s, decided on %s alone — %s never answered.\n\n",
+		verdict, f.Date.Format("Mon 2 Jan"), f.Source, strings.Join(f.Missing, ", "))
+	fmt.Fprintf(&b, "%s\n\n", f.Result.Reason)
+	fmt.Fprintf(&b, "Attempts:  %d before the retry deadline; the full model set never came back.\n", f.Attempts)
+	fmt.Fprintf(&b, "Last error: %v\n\n", f.Err)
+	b.WriteString("The agreement rule did NOT apply tonight: nothing cross-checked this decision.\n")
+	if f.BaseURL != "" {
+		fmt.Fprintf(&b, "The row is flagged as degraded at %s.\n", f.BaseURL)
 	}
 	return b.String()
 }

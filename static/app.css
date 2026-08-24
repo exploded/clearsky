@@ -65,6 +65,9 @@ tr.go { background: rgba(53, 194, 106, 0.06); }
    catches the eye without competing with the GO/NO-GO badge. */
 .agree > summary { cursor: pointer; white-space: nowrap; color: var(--muted); }
 .agree.split > summary { color: #e8b13d; font-weight: 600; }
+/* A degraded night — one or more models never answered — gets the same amber as a
+   split, because it carries the same warning: nothing cross-checked this decision. */
+.agree.degraded > summary { color: #e8b13d; font-weight: 600; }
 .agree[open] > summary { margin-bottom: 6px; }
 .agree ul { list-style: none; margin: 0; padding: 0; font-size: 12px; }
 .agree li { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; white-space: nowrap; }
@@ -73,6 +76,10 @@ tr.go { background: rgba(53, 194, 106, 0.06); }
 .agree .v-go .v { color: var(--go); }
 .agree .v-nogo .v { color: var(--nogo); }
 .agree .d { color: var(--muted); font-variant-numeric: tabular-nums; }
+/* A model that never answered is listed alongside the ones that did, greyed out — an
+   absent row is invisible, and the absence is the thing worth seeing. */
+.agree .v-missing { opacity: .55; }
+.agree .v-missing .m, .agree .v-missing .v { color: var(--muted); font-weight: 400; }
 
 /* Usable window — the run of hours the decision was actually made on. */
 .win { white-space: nowrap; }

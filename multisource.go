@@ -13,14 +13,39 @@ import (
 // agrees it's clear" — because the merged value passes a threshold only when all
 // sources are below it. No changes to the decision engine are needed.
 //
-// If a source fails, the run degrades gracefully to whichever sources succeeded
-// (logged), so one provider outage never blocks a decision.
+// A fetch that loses sources produces an error, not a thinner answer. This used to be
+// the other way round — any single survivor was returned as a success — which made a
+// PARTIAL outage worse than a total one: a total failure errored and went into the
+// retry ladder (which works: Open-Meteo 503s at the fire time every night and recovers
+// within minutes), while a partial failure sailed straight through and decided the
+// night on whatever model happened to answer. On 20 Aug 2026 that was ICON alone,
+// scoring 73/GO with the agreement rule silently switched off, and the alert went to
+// the subscriber list. Requiring the quorum turns that into a retry.
+//
+// min is normally every configured source. The last-resort relaxed copy (see relaxed)
+// accepts one, for the deadline case where a thin answer beats no answer at all.
 type MultiSource struct {
 	sources []Source
+	min     int
 }
 
+// NewMultiSource requires every source to answer. Use NewMultiSourceMin to lower the
+// bar deliberately (CLEARSKY_MIN_SOURCES).
 func NewMultiSource(sources ...Source) *MultiSource {
-	return &MultiSource{sources: sources}
+	return &MultiSource{sources: sources, min: len(sources)}
+}
+
+func NewMultiSourceMin(min int, sources ...Source) *MultiSource {
+	if min < 1 || min > len(sources) {
+		min = len(sources)
+	}
+	return &MultiSource{sources: sources, min: min}
+}
+
+// relaxed returns a copy that accepts a single surviving source, for the scheduler's
+// final attempt before it would otherwise record nothing at all. Implements relaxable.
+func (m *MultiSource) relaxed() Source {
+	return &MultiSource{sources: m.sources, min: 1}
 }
 
 // Name lists the members rather than just saying "agreement", so the startup log and
@@ -62,15 +87,27 @@ func (m *MultiSource) Fetch(ctx context.Context, lat, lon float64) (Forecast, er
 		ok = append(ok, r.fc)
 	}
 
-	switch len(ok) {
-	case 0:
+	if len(ok) == 0 {
 		return Forecast{}, fmt.Errorf("all sources failed: %v", failed)
-	case 1:
-		// Only one source available — return it as-is (no agreement possible).
-		return ok[0], nil
-	default:
-		return mergePessimistic(ok), nil
 	}
+	if len(ok) < m.min {
+		// Not an outage the caller can paper over: the decision this would produce is
+		// weaker than the one it is configured to make. Report it as a failure so the
+		// retry ladder gets a turn.
+		return Forecast{}, fmt.Errorf("only %d of %d models answered (%v failed); need %d",
+			len(ok), len(m.sources), failed, m.min)
+	}
+
+	fc := ok[0]
+	if len(ok) > 1 {
+		fc = mergePessimistic(ok)
+	} else {
+		// A lone survivor still records itself as a member, so the log page can say
+		// "icon only" rather than showing a bare source name that looks routine.
+		fc.Members = ok
+	}
+	fc.Missing = failed
+	return fc, nil
 }
 
 // mergePessimistic combines forecasts by taking the element-wise maximum cloud and

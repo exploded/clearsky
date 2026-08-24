@@ -16,6 +16,15 @@ type Source interface {
 	Fetch(ctx context.Context, lat, lon float64) (Forecast, error)
 }
 
+// relaxable is a Source that enforces a quorum and can drop it for one last-resort
+// attempt. The scheduler uses it at the retry deadline: a decision made on fewer models
+// than the agreement rule wants is worse than a normal night, but it is much better
+// than the alternative on offer at that point, which is no row for the night at all.
+// Sources without a quorum (a single provider) simply do not implement it.
+type relaxable interface {
+	relaxed() Source
+}
+
 // bodySnippet reads the first few hundred bytes of an error response for inclusion in
 // the returned error. Providers explain themselves in the body — Open-Meteo answers
 // {"error":true,"reason":"…"} — and formatting only the status code throws that away.
@@ -46,6 +55,13 @@ type Forecast struct {
 	// the night, so the log page can show whether the sources actually agreed or the
 	// merge was hiding a 90%-cloud outlier. Always empty for a single provider.
 	Members []Forecast
+
+	// Missing names the configured models that did NOT answer. A run that reaches the
+	// decision engine on two of three models is not the same run as one that had all
+	// three, and the difference has to survive all the way to the log page — on 20 Aug
+	// 2026 ICON alone produced a GO, notified it, and the row looked identical to a
+	// unanimous three-model night.
+	Missing []string
 }
 
 // HourlyPoint is one hour of forecast. Cloud values are percentages (0..100).
@@ -86,7 +102,7 @@ func (f Forecast) InLocation(loc *time.Location) Forecast {
 			members[i] = m.InLocation(loc)
 		}
 	}
-	return Forecast{Source: f.Source, Hours: hours, Members: members}
+	return Forecast{Source: f.Source, Hours: hours, Members: members, Missing: f.Missing}
 }
 
 // HoursWithin returns the forecast hours that OVERLAP [start, end]. An hourly point

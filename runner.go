@@ -34,8 +34,25 @@ func NewRunner(q *store.Queries, src Source, notifier *Notifier, cfg Config, loc
 func (r *Runner) SourceName() string { return r.src.Name() }
 
 // RunForDate evaluates the night whose evening falls on date (interpreted in the site
-// timezone) and returns the decision.
+// timezone) and returns the decision. A source that cannot muster its quorum of models
+// fails the run, so the caller's retry ladder gets a turn.
 func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error) {
+	return r.run(ctx, date, r.src)
+}
+
+// RunDegraded is the last resort: the same run with the source's quorum dropped, so a
+// single surviving model can still produce a decision. The scheduler calls it once, at
+// the retry deadline, in place of recording nothing for the night. The resulting row
+// carries the missing models in sources_json and is flagged on the log page.
+func (r *Runner) RunDegraded(ctx context.Context, date time.Time) (Result, error) {
+	src := r.src
+	if rx, ok := src.(relaxable); ok {
+		src = rx.relaxed()
+	}
+	return r.run(ctx, date, src)
+}
+
+func (r *Runner) run(ctx context.Context, date time.Time, src Source) (Result, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -45,7 +62,7 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 	dark := darknessWindow(date, r.cfg.Lat, r.cfg.Lon, r.loc)
 	moon := moonInfo(dark, r.cfg.Lat, r.cfg.Lon, r.loc)
 
-	fc, err := r.src.Fetch(ctx, r.cfg.Lat, r.cfg.Lon)
+	fc, err := src.Fetch(ctx, r.cfg.Lat, r.cfg.Lon)
 	if err != nil {
 		return Result{}, fmt.Errorf("fetch forecast: %w", err)
 	}
@@ -55,6 +72,7 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 	fc = fc.InLocation(r.loc)
 	hours := fc.HoursWithin(dark.Dusk, dark.Dawn)
 	res := Evaluate(hours, dark, r.cfg.Thresholds)
+	res.Source, res.Missing = fc.Source, fc.Missing
 	// Re-decide the same night from each source alone. Purely for the record: the
 	// decision above stands, but a 1-of-3 GO is worth seeing on the log page.
 	agreement := summarizeAgreement(fc, dark, r.cfg.Thresholds)
@@ -100,13 +118,14 @@ func (r *Runner) RunForDate(ctx context.Context, date time.Time) (Result, error)
 		"score", res.Score, "reason", res.Reason, "source", fc.Source,
 		"usable_window", res.Window.Label, "usable_hours", res.Window.Hours,
 		"sources_go", agreement.GoCount, "sources_n", len(agreement.Sources),
-		"cloud_spread", agreement.Spread)
+		"cloud_spread", agreement.Spread, "missing_sources", fc.Missing)
 
 	// Notify on GO nights only, and only once per date (unless a NO-GO later flips to
 	// GO — then notified_at is still null, so it will notify).
 	if res.GO && !alreadyNotified && r.notifier.Enabled() {
 		r.notifier.Notify(ctx, Message{
 			Date: date, Source: fc.Source, Result: res, Dark: dark, Moon: moon,
+			Missing: fc.Missing,
 		})
 		if err := r.q.SetNightNotified(ctx, store.SetNightNotifiedParams{
 			NotifiedAt: sql.NullInt64{Int64: time.Now().Unix(), Valid: true},

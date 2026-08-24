@@ -24,6 +24,7 @@ import (
 // without a database or a live forecast API behind it.
 type nightRunner interface {
 	RunForDate(ctx context.Context, date time.Time) (Result, error)
+	RunDegraded(ctx context.Context, date time.Time) (Result, error)
 	SourceName() string
 }
 
@@ -116,11 +117,7 @@ func (s *Scheduler) runWithRetry(ctx context.Context, date time.Time) {
 		// Only retry if the next attempt still lands before the deadline — a retry at
 		// 23:30 answers a question about a night that is already half over.
 		if next := s.now().Add(delay); next.After(deadline) {
-			slog.Error("giving up on tonight's run", "date", dateKey,
-				"attempts", attempt, "deadline", deadline.Format("15:04"), "err", err)
-			s.notifier.NotifyFailure(ctx, FailureMessage{
-				Date: date, Attempts: attempt, Err: err, Source: s.runner.SourceName(),
-			})
+			s.finalAttempt(ctx, date, dateKey, attempt, err, deadline)
 			return
 		}
 
@@ -132,6 +129,37 @@ func (s *Scheduler) runWithRetry(ctx context.Context, date time.Time) {
 		if delay *= 2; delay > s.retry.Max {
 			delay = s.retry.Max
 		}
+	}
+}
+
+// finalAttempt runs at the retry deadline, when the full model set has never come back.
+// Rather than record nothing, it tries once more with the source's quorum relaxed: a
+// decision from one or two models is thin evidence, but it is evidence, and it is the
+// difference between a flagged row and an empty night.
+//
+// Either way the owner is told. A degraded night is not a quiet success — the whole
+// agreement rule was inoperative for it.
+func (s *Scheduler) finalAttempt(ctx context.Context, date time.Time, dateKey string, attempts int, lastErr error, deadline time.Time) {
+	res, derr := s.runner.RunDegraded(ctx, date)
+	switch {
+	case derr == nil && len(res.Missing) > 0:
+		slog.Warn("recorded a DEGRADED decision at the retry deadline", "date", dateKey,
+			"attempts", attempts, "missing", res.Missing, "decision", decisionCode(res.GO),
+			"err", lastErr)
+		s.notifier.NotifyFailure(ctx, FailureMessage{
+			Date: date, Attempts: attempts, Err: lastErr, Source: res.Source,
+			Degraded: true, Missing: res.Missing, Result: res,
+		})
+	case derr == nil:
+		// The full set came back on the last attempt after all — an ordinary night,
+		// and Runner has already notified it if it was a GO.
+		slog.Info("final attempt succeeded at full strength", "date", dateKey, "attempts", attempts)
+	default:
+		slog.Error("giving up on tonight's run", "date", dateKey, "attempts", attempts,
+			"deadline", deadline.Format("15:04"), "err", derr, "quorum_err", lastErr)
+		s.notifier.NotifyFailure(ctx, FailureMessage{
+			Date: date, Attempts: attempts, Err: derr, Source: s.runner.SourceName(),
+		})
 	}
 }
 

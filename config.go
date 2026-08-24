@@ -25,10 +25,16 @@ type Config struct {
 
 	Retry RetryPolicy
 
-	// Weather source selection: "agreement" (Open-Meteo AND yr.no must both be clear),
-	// "open-meteo", or "met-no".
+	// Weather source selection: "agreement" (every model in agreementModels must be
+	// clear), one model by name ("ecmwf" / "gfs" / "icon"), "open-meteo", or "met-no".
 	Source         string
 	MetnoUserAgent string // required descriptive UA for the MET Norway API
+
+	// MinSources is how many of the agreement models must answer for a run to count.
+	// 0 means all of them, which is the point of the mode. Lowering it trades the
+	// cross-check for availability; the scheduler already falls back to a flagged
+	// single-model run at the retry deadline, so there is rarely a reason to.
+	MinSources int
 
 	// Visual "Tonight" panel image URLs (embedded on the log page for eyeballing).
 	ClearOutsideImg string
@@ -113,13 +119,17 @@ func FromEnv() Config {
 	lat := getenvFloat("CLEARSKY_LAT", -37.79)
 	lon := getenvFloat("CLEARSKY_LON", 145.18)
 	return Config{
-		Addr:           getenv("CLEARSKY_ADDR", ":8080"),
-		DB:             getenv("CLEARSKY_DB", "clearsky.db"),
-		BaseURL:        strings.TrimRight(getenv("CLEARSKY_BASE_URL", "http://localhost:8080"), "/"),
-		LogLevel:       getenv("CLEARSKY_LOG_LEVEL", "info"),
-		TZ:             getenv("CLEARSKY_TZ", "Australia/Melbourne"),
-		RunHour:        getenvInt("CLEARSKY_RUN_HOUR", 18),
-		RunMinute:      getenvInt("CLEARSKY_RUN_MINUTE", 0),
+		Addr:     getenv("CLEARSKY_ADDR", ":8080"),
+		DB:       getenv("CLEARSKY_DB", "clearsky.db"),
+		BaseURL:  strings.TrimRight(getenv("CLEARSKY_BASE_URL", "http://localhost:8080"), "/"),
+		LogLevel: getenv("CLEARSKY_LOG_LEVEL", "info"),
+		TZ:       getenv("CLEARSKY_TZ", "Australia/Melbourne"),
+		RunHour:  getenvInt("CLEARSKY_RUN_HOUR", 18),
+		// Deliberately not on the hour. 18:00 Melbourne is 08:00:00 UTC exactly — the
+		// instant every cron on the planet hits the free weather APIs. Open-Meteo 503'd
+		// the first attempt on all 13 nights from 12 to 24 Aug 2026 and answered fine a
+		// couple of minutes later. Seven minutes past costs nothing and dodges the queue.
+		RunMinute:      getenvInt("CLEARSKY_RUN_MINUTE", 7),
 		Lat:            lat,
 		Lon:            lon,
 		CatchupOnStart: getenvBool("CLEARSKY_CATCHUP_ON_START", true),
@@ -129,6 +139,7 @@ func FromEnv() Config {
 			UntilHour: getenvInt("CLEARSKY_RETRY_UNTIL_HOUR", 23),
 		},
 		Source:         getenv("CLEARSKY_SOURCE", "agreement"),
+		MinSources:     getenvInt("CLEARSKY_MIN_SOURCES", 0),
 		MetnoUserAgent: getenv("CLEARSKY_METNO_USER_AGENT", "clearsky-astro/1.0 (+https://deepspaceplace.com)"),
 		// ClearOutside serves a public forecast PNG keyed by lat/lon (2 decimals).
 		ClearOutsideImg: getenv("CLEARSKY_CLEAROUTSIDE_IMG",

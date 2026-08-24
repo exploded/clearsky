@@ -102,6 +102,26 @@ templates/ static/ migrations/ queries/ store/
   `runWithRetry` now backs off (`CLEARSKY_RETRY_FIRST` doubling to `_MAX`) until
   `CLEARSKY_RETRY_UNTIL_HOUR`, then sends a **failure notification**. Silence used to be
   indistinguishable from a quiet NO-GO night; it no longer is.
+- **A PARTIAL fetch failure is a failure — it used to be the worst case of all.**
+  `MultiSource` originally returned any single survivor as a success, so losing two of
+  three models skipped the retry ladder entirely and decided the night with the
+  agreement rule inoperative, while losing all three errored and recovered on retry
+  minutes later. The journal shows Open-Meteo 503ing the *first* attempt on all 13
+  nights of 12-24 Aug 2026; on the 17th, 20th and 22nd exactly one model survived, and
+  20 Aug shipped a 73/GO — notified to the subscriber list — on ICON talking to itself,
+  rendered on the log page as an unremarkable "icon". `MultiSource` now enforces a
+  quorum (all models; `CLEARSKY_MIN_SOURCES` to lower it) and fails short of it.
+- **Degraded runs are a last resort, and are always labelled.** Only at the retry
+  deadline does `Scheduler.finalAttempt` call `Runner.RunDegraded`, which drops the
+  quorum (`relaxable`/`MultiSource.relaxed`) so a lone model can still record something
+  rather than leaving the night blank. The missing models ride through
+  `Forecast.Missing` → `Agreement.Missing` → `sources_json`, the row renders amber as
+  `icon only · ecmwf, gfs missing` with greyed "no answer" entries, the GO alert carries
+  a DEGRADED banner, and the owner gets a degraded ops alert. Never let a thin night
+  look like a normal one.
+- **The fire time is off the hour on purpose** (`CLEARSKY_RUN_MINUTE` defaults to 7).
+  18:00 Melbourne is 08:00:00 UTC exactly — peak cron o'clock at the free APIs, and a
+  100% first-attempt failure rate over 13 consecutive nights. Don't set it back to 0.
 - **Missed nights are never backfilled, and must not be.** Catch-up only ever runs
   *today*. The forecast APIs serve the present forward, so re-running an older date
   returns no hours inside that night's darkness window and would persist a fabricated

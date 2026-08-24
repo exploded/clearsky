@@ -30,9 +30,9 @@ type CloudSummary struct {
 type RainSummary struct {
 	TotalMm    float64 `json:"totalMm"`
 	MaxProbPct int     `json:"maxProbPct"`
-	AnyHour    bool    `json:"anyHour"` // any hour of the night breached a rain veto
-	At         string  `json:"at"`      // local HH:MM of the worst rain hour ("" if none)
-	PackUpAt   string  `json:"packUpAt"`// local HH:MM rain arrives after the usable window ("" if none)
+	AnyHour    bool    `json:"anyHour"`  // any hour of the night breached a rain veto
+	At         string  `json:"at"`       // local HH:MM of the worst rain hour ("" if none)
+	PackUpAt   string  `json:"packUpAt"` // local HH:MM rain arrives after the usable window ("" if none)
 }
 
 // WindowSummary is the longest contiguous run of dark hours that each pass the
@@ -56,6 +56,12 @@ type Result struct {
 	Cloud  CloudSummary
 	Rain   RainSummary
 	Window WindowSummary
+
+	// Provenance, filled in by the runner rather than Evaluate: the models this
+	// decision was made on, and any configured model that failed to answer. Evaluate
+	// itself only ever sees merged hours and has no idea where they came from.
+	Source  string
+	Missing []string
 }
 
 // Evaluate decides GO / NO-GO for a night. hours must already be filtered to the
