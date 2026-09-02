@@ -7,7 +7,8 @@
 </div>
 {{else}}
 <form class="sub-form" method="post" action="/subscribe"
-      hx-post="/subscribe" hx-target="#subscribe-form" hx-swap="innerHTML" novalidate>
+      hx-post="/subscribe" hx-target="#subscribe-form" hx-swap="innerHTML"
+      hx-disable="find button[type=submit]" novalidate>
   <div class="sub-field">
     <label for="sub-email">Email <span class="req">required</span></label>
     <input id="sub-email" name="email" type="email" inputmode="email" autocomplete="email"
@@ -28,7 +29,7 @@
     <input id="sub-website" name="website" type="text" tabindex="-1" autocomplete="off">
   </div>
   <div class="sub-actions">
-    <button type="submit" hx-disabled-elt="this">Send confirmation email</button>
+    <button type="submit">Send confirmation email</button>
     <span class="err form-err" role="alert">{{.FormErr}}</span>
   </div>
 </form>
