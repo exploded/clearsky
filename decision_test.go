@@ -247,7 +247,7 @@ func TestForecastInLocationNormalisesMixedSources(t *testing.T) {
 	utc.Hours[0].At = utc.Hours[0].At.UTC()
 	local := Forecast{Source: "open-meteo", Hours: []HourlyPoint{hp(23, 9, 9, 0, 0, 0, 0)}}
 
-	merged := mergePessimistic([]Forecast{utc, local}).InLocation(testLoc)
+	merged := mergeVote([]Forecast{utc, local}, 2, defaultThresholds()).InLocation(testLoc)
 	if n := len(merged.Hours); n != 1 {
 		t.Fatalf("merged hours = %d, want 1 (same instant, different zones)", n)
 	}

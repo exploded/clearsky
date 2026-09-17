@@ -145,8 +145,8 @@ func main() {
 // They are chosen for INDEPENDENCE, not accuracy. The previous pairing (Open-Meteo's
 // best_match blend + yr.no) was two views of one model — on 2026-08-03 they agreed
 // within ~4% on every hour of the night and jointly passed a window that GFS put at
-// 92-100% cloud. Requiring three genuinely separate models to agree is what makes the
-// pessimistic merge mean something.
+// 92-100% cloud. A majority vote only means something when the voters are genuinely
+// separate models.
 //
 // BOM's own ACCESS-G is deliberately absent: Open-Meteo carries it but returns null
 // for every field at this site, and BOM's public API has no cloud data and is not
@@ -157,8 +157,8 @@ var agreementModels = []struct{ model, name string }{
 	{"icon_seamless", "icon"}, // DWD (Germany)
 }
 
-// buildSource constructs the weather source from config. "agreement" requires every
-// model in agreementModels to be clear; the single-provider modes run just one.
+// buildSource constructs the weather source from config. "agreement" requires a
+// majority (CLEARSKY_MIN_AGREE) of agreementModels to call each hour clear; the single-provider modes run just one.
 // Unknown values fall back to agreement.
 func buildSource(cfg Config) Source {
 	switch cfg.Source {
@@ -181,7 +181,7 @@ func buildSource(cfg Config) Source {
 		// Every model must answer, unless explicitly told otherwise. A run on a subset
 		// is a run with the cross-check switched off, so it fails and gets retried
 		// rather than quietly deciding the night on whoever picked up.
-		return NewMultiSourceMin(cfg.MinSources, sources...)
+		return NewMultiSourceMin(cfg.MinSources, cfg.MinAgree, cfg.Thresholds, sources...)
 	}
 }
 

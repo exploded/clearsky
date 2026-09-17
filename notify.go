@@ -27,6 +27,10 @@ type Message struct {
 	// of this app anyone acts on at 6pm, and "[icon]" on its own does not read as a
 	// warning.
 	Missing []string
+
+	// Outvoted names models whose own verdict on the night went the other way. A GO
+	// carried 2-to-1 is a real GO, but it should not read like a unanimous one.
+	Outvoted []string
 }
 
 // Subject is the email subject line.
@@ -51,6 +55,10 @@ func (m Message) Body() string {
 	if len(m.Missing) > 0 {
 		fmt.Fprintf(&b, "⚠️ DEGRADED: %s did not answer — decided on %s alone, so the models were never cross-checked. Look up before you commit.\n\n",
 			strings.Join(m.Missing, ", "), m.Source)
+	}
+	if len(m.Outvoted) > 0 {
+		fmt.Fprintf(&b, "Split call: %s disagreed on its own and was outvoted by the other models.\n\n",
+			strings.Join(m.Outvoted, ", "))
 	}
 
 	w := m.Result.Window

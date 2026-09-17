@@ -40,8 +40,8 @@ func NewOpenMeteo(tz string) *OpenMeteo {
 // Why this exists: on 2026-08-03 the "agreement" gate passed a night that every other
 // model called overcast, because its two sources — Open-Meteo best_match and yr.no —
 // returned cloud within ~4% of each other on every hour. They were the same forecast
-// twice, so taking the pessimistic merge of them was a no-op. Naming the model is what
-// makes the sources actually independent.
+// twice, so merging them cross-checked nothing. Naming the model is what makes the
+// sources actually independent.
 func NewOpenMeteoModel(tz, model, name string) *OpenMeteo {
 	return &OpenMeteo{
 		client: &http.Client{Timeout: 15 * time.Second},

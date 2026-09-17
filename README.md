@@ -23,8 +23,10 @@ All thresholds are environment variables (see `.env.example`) — tune without r
 `CLEARSKY_SOURCE` selects the data behind the decision:
 
 - **`agreement`** (default) — fetches **ECMWF**, **GFS** and **ICON** by name through
-  Open-Meteo (free, keyless) and merges them pessimistically, so it's only a GO when
-  *all three* agree the sky is clear and dry. Three models from three met centres,
+  Open-Meteo (free, keyless) and takes a per-hour vote: an hour counts only when at
+  least two of the three models call it clear and dry, and it's a GO when enough of
+  those hours run back to back. `CLEARSKY_MIN_AGREE=3` requires all three (the old
+  rule, which let ICON's frequent low-cloud forecast veto clear nights). Three models from three met centres,
   chosen for independence: the original Open-Meteo + yr.no pairing turned out to be the
   same model twice and so filtered nothing. The stored `source` reads `ecmwf+gfs+icon`.
 - **`ecmwf`** / **`gfs`** / **`icon`** — one named model on its own.

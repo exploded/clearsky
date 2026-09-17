@@ -8,10 +8,9 @@ import (
 // SourceVerdict is one provider's independent opinion of the same night, decided with
 // the identical rules and thresholds used for the real decision.
 //
-// The GO/NO-GO the app acts on is made on the pessimistic MERGE of every source, which
-// by construction cannot be more optimistic than its gloomiest member. That is the
-// right way to decide, but it throws away the thing you most want to know the morning
-// after a bust: did the models actually agree, or did one of them carry the night?
+// The GO/NO-GO the app acts on is made on the per-hour VOTE across sources (mergeVote).
+// That is the right way to decide, but it throws away the thing you most want to know
+// the morning after a bust: did the models actually agree, or was one of them outvoted?
 type SourceVerdict struct {
 	Name        string `json:"name"`
 	GO          bool   `json:"go"`
@@ -60,6 +59,17 @@ func (a Agreement) Degraded() bool { return len(a.Missing) > 0 }
 // split decision is the signal to go outside and look up before committing.
 func (a Agreement) Unanimous() bool {
 	return len(a.Sources) > 0 && (a.GoCount == 0 || a.GoCount == len(a.Sources))
+}
+
+// Outvoted names the sources whose own verdict differs from the decision that was made.
+func (a Agreement) Outvoted(decidedGO bool) []string {
+	var out []string
+	for _, s := range a.Sources {
+		if s.GO != decidedGO {
+			out = append(out, s.Name)
+		}
+	}
+	return out
 }
 
 // summarizeAgreement evaluates each contributing source on its own, over the same

@@ -59,6 +59,18 @@ func TestMessageFormatting(t *testing.T) {
 	}
 }
 
+// A GO carried 2-to-1 names the dissenting model; a unanimous one says nothing extra.
+func TestMessageNamesOutvotedModels(t *testing.T) {
+	m := sampleMessage(t, true)
+	if strings.Contains(m.Body(), "Split call") {
+		t.Error("unanimous GO must not mention a split")
+	}
+	m.Outvoted = []string{"icon"}
+	if body := m.Body(); !strings.Contains(body, "Split call: icon disagreed") {
+		t.Errorf("body should name the outvoted model\n---\n%s", body)
+	}
+}
+
 func TestNotifierFanoutAndResilience(t *testing.T) {
 	ok := &fakeChannel{}
 	bad := &fakeChannel{fail: true}

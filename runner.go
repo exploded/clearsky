@@ -125,7 +125,7 @@ func (r *Runner) run(ctx context.Context, date time.Time, src Source) (Result, e
 	if res.GO && !alreadyNotified && r.notifier.Enabled() {
 		r.notifier.Notify(ctx, Message{
 			Date: date, Source: fc.Source, Result: res, Dark: dark, Moon: moon,
-			Missing: fc.Missing,
+			Missing: fc.Missing, Outvoted: agreement.Outvoted(res.GO),
 		})
 		if err := r.q.SetNightNotified(ctx, store.SetNightNotifiedParams{
 			NotifiedAt: sql.NullInt64{Int64: time.Now().Unix(), Valid: true},

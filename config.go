@@ -25,8 +25,8 @@ type Config struct {
 
 	Retry RetryPolicy
 
-	// Weather source selection: "agreement" (every model in agreementModels must be
-	// clear), one model by name ("ecmwf" / "gfs" / "icon"), "open-meteo", or "met-no".
+	// Weather source selection: "agreement" (a majority of the models in agreementModels
+	// must call each hour clear), one model by name ("ecmwf" / "gfs" / "icon"), "open-meteo", or "met-no".
 	Source         string
 	MetnoUserAgent string // required descriptive UA for the MET Norway API
 
@@ -35,6 +35,11 @@ type Config struct {
 	// cross-check for availability; the scheduler already falls back to a flagged
 	// single-model run at the retry deadline, so there is rarely a reason to.
 	MinSources int
+
+	// MinAgree is how many agreement models must call an hour usable for it to count.
+	// 0 means a simple majority (2 of 3). 3 is the old all-must-agree rule, under which
+	// ICON's recurring low-cloud forecast vetoed nights ECMWF and GFS both called clear.
+	MinAgree int
 
 	// Visual "Tonight" panel image URLs (embedded on the log page for eyeballing).
 	ClearOutsideImg string
@@ -140,6 +145,7 @@ func FromEnv() Config {
 		},
 		Source:         getenv("CLEARSKY_SOURCE", "agreement"),
 		MinSources:     getenvInt("CLEARSKY_MIN_SOURCES", 0),
+		MinAgree:       getenvInt("CLEARSKY_MIN_AGREE", 0),
 		MetnoUserAgent: getenv("CLEARSKY_METNO_USER_AGENT", "clearsky-astro/1.0 (+https://deepspaceplace.com)"),
 		// ClearOutside serves a public forecast PNG keyed by lat/lon (2 decimals).
 		ClearOutsideImg: getenv("CLEARSKY_CLEAROUTSIDE_IMG",

@@ -66,9 +66,18 @@ templates/ static/ migrations/ queries/ store/
   (see `agreementModels` in main.go). The original pairing — Open-Meteo `best_match` +
   yr.no — was the same model twice: on 2026-08-03 they agreed within ~4% on every hour
   and jointly passed a window GFS/ICON put at 85-100% cloud, shipping a false GO. The
-  pessimistic merge only filters anything if the sources can actually disagree. Before
+  vote only filters anything if the sources can actually disagree. Before
   adding a provider, check it against the others on a marginal night — a new API is not
   a new opinion.
+- **The models vote per hour; one model is not a veto.** `mergeVote` keeps an hour usable
+  only when `CLEARSKY_MIN_AGREE` models (default majority, 2 of 3) each pass the per-hour
+  gate on their own, and the merged point is one real model's whole point — never a
+  field-wise blend, which could pass an hour no model called clear. The original merge
+  took the worst value of every field, i.e. unanimity: from 17 Aug to 17 Sep 2026 seven
+  nights had two models at GO and recorded NO-GO, five on ICON alone (it forecasts low
+  stratocumulus here that ECMWF/GFS don't), including the clear night of 17 Sep. A GO
+  alert carried 2-to-1 names the outvoted model. Per-hour, not per-night: two models with
+  clear windows at different times do not add up to a GO.
 - **BOM is not available as a source.** Their public API forbids reuse in its own
   copyright field, carries no cloud data (icon + rain chance only), and ACCESS-G via
   Open-Meteo returns null for every field at this site. Don't re-litigate this.

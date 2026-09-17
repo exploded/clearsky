@@ -35,7 +35,7 @@ func TestSummarizeAgreementSplit(t *testing.T) {
 	pessimist1 := stubSource{name: "gfs", hours: clearHours(dusk, 5, 95)}
 	pessimist2 := stubSource{name: "icon", hours: clearHours(dusk, 5, 88)}
 
-	fc, err := NewMultiSource(optimist, pessimist1, pessimist2).Fetch(context.Background(), 0, 0)
+	fc, err := NewMultiSource(th, optimist, pessimist1, pessimist2).Fetch(context.Background(), 0, 0)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -62,6 +62,10 @@ func TestSummarizeAgreementSplit(t *testing.T) {
 		t.Errorf("Label() = %q", ag.Label())
 	}
 
+	if got := ag.Outvoted(false); len(got) != 1 || got[0] != "ecmwf" {
+		t.Errorf("Outvoted(NO-GO) = %v, want [ecmwf]", got)
+	}
+
 	// The optimist must be the one recorded as GO.
 	for _, s := range ag.Sources {
 		if (s.Name == "ecmwf") != s.GO {
@@ -78,7 +82,7 @@ func TestSummarizeAgreementUnanimous(t *testing.T) {
 	dark := Darkness{Dusk: dusk, Dawn: dusk.Add(6 * time.Hour)}
 	th := FromEnv().Thresholds
 
-	fc, err := NewMultiSource(
+	fc, err := NewMultiSource(th,
 		stubSource{name: "ecmwf", hours: clearHours(dusk, 5, 5)},
 		stubSource{name: "gfs", hours: clearHours(dusk, 5, 9)},
 		stubSource{name: "icon", hours: clearHours(dusk, 5, 12)},
