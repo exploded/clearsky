@@ -16,6 +16,11 @@ type Config struct {
 	BaseURL  string // public base URL for links in templates/notifications
 	LogLevel string // slog level: debug | info | warn | error
 
+	// Monitor portal log shipping (https://github.com/exploded/monitor). Both must be
+	// set; WARN and above then go to its /api/logs, and ERROR raises an alert there.
+	MonitorURL    string
+	MonitorAPIKey string
+
 	TZ             string  // scheduler + darkness timezone, e.g. "Australia/Melbourne"
 	RunHour        int     // daily job fire hour, local time
 	RunMinute      int     // daily job fire minute, local time
@@ -167,6 +172,9 @@ func FromEnv() Config {
 		},
 		DiscordWebhookURL: getenv("CLEARSKY_DISCORD_WEBHOOK_URL", ""),
 		EmailTo:           getenv("CLEARSKY_EMAIL_TO", ""),
+
+		MonitorURL:    strings.TrimRight(getenv("CLEARSKY_MONITOR_URL", ""), "/"),
+		MonitorAPIKey: getenv("CLEARSKY_MONITOR_API_KEY", ""),
 
 		SESRegion:          getenv("CLEARSKY_SES_REGION", "ap-southeast-2"),
 		SESAccessKeyID:     getenv("CLEARSKY_SES_ACCESS_KEY_ID", ""),

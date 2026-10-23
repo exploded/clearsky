@@ -19,6 +19,8 @@ import (
 
 	_ "time/tzdata" // embed the tz database so Australia/Melbourne loads on Windows
 
+	"github.com/exploded/monitor/pkg/logship"
+
 	"clearsky/store"
 )
 
@@ -32,7 +34,8 @@ func main() {
 		log.Printf("reading .env: %v", err)
 	}
 	cfg := FromEnv()
-	setupLogging(cfg.LogLevel)
+	stopLogShip := setupLogging(cfg)
+	defer stopLogShip()
 
 	loc, err := time.LoadLocation(cfg.TZ)
 	if err != nil {
@@ -198,9 +201,11 @@ func securityHeaders(next http.Handler) http.Handler {
 
 // setupLogging installs a process-wide slog text logger at the configured level and
 // routes the stdlib log package through it, so every line shares one structured stream.
-func setupLogging(level string) {
+// When the monitor portal is configured it also ships WARN and above there; the returned
+// func flushes anything still buffered.
+func setupLogging(cfg Config) func() {
 	var lv slog.Level
-	switch strings.ToLower(strings.TrimSpace(level)) {
+	switch strings.ToLower(strings.TrimSpace(cfg.LogLevel)) {
 	case "debug":
 		lv = slog.LevelDebug
 	case "warn", "warning":
@@ -210,10 +215,27 @@ func setupLogging(level string) {
 	default:
 		lv = slog.LevelInfo
 	}
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lv}))
-	slog.SetDefault(logger)
+	var handler slog.Handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lv})
+	stop := func() {}
+	if cfg.MonitorURL != "" && cfg.MonitorAPIKey != "" {
+		ship := logship.New(logship.Options{
+			Endpoint: cfg.MonitorURL + "/api/logs",
+			APIKey:   cfg.MonitorAPIKey,
+			App:      "clearsky",
+			Level:    slog.LevelWarn,
+		})
+		handler = logship.Multi(handler, ship)
+		stop = ship.Shutdown
+	}
+	slog.SetDefault(slog.New(handler))
 	log.SetFlags(0)
 	log.SetOutput(slogWriter{})
+	if cfg.MonitorURL != "" && cfg.MonitorAPIKey != "" {
+		// WARN so it ships: it proves shipping works after a deploy without raising an
+		// alert (only ERROR does).
+		slog.Warn("clearsky started, log shipping active", "endpoint", cfg.MonitorURL+"/api/logs")
+	}
+	return stop
 }
 
 type slogWriter struct{}

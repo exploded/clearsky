@@ -3,6 +3,7 @@ module clearsky
 go 1.26.4
 
 require (
+	github.com/exploded/monitor v0.0.0-20260902040945-7be48f0fc28e
 	github.com/kixorz/suncalc v1.0.0
 	modernc.org/sqlite v1.53.0
 )

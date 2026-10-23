@@ -52,7 +52,9 @@ func (p *imgProxy) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	img, err := p.get(r.Context(), key, upstream)
 	if err != nil {
-		slog.Error("img proxy fetch", "source", key, "err", err)
+		// WARN, not ERROR: the upstream is a third-party forecast site, and an
+		// outage there is not something to be alerted about.
+		slog.Warn("img proxy fetch", "source", key, "err", err)
 		http.Error(w, "upstream image unavailable", http.StatusBadGateway)
 		return
 	}

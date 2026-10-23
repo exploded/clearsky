@@ -283,7 +283,8 @@ func (s *Subscriptions) Broadcast(ctx context.Context, m Message) {
 			if sub.DiscordWebhook != "" {
 				footer := fmt.Sprintf("\nclearsky · Donvale, VIC (Melbourne only) · %s\n", s.baseURL)
 				if err := s.discord(sub.DiscordWebhook).send(ctx, subject, body+footer); err != nil {
-					slog.Error("subscriber discord failed", "email", sub.Email, "err", err)
+					// WARN: the webhook belongs to the subscriber, so a dead one is theirs to fix.
+					slog.Warn("subscriber discord failed", "email", sub.Email, "err", err)
 					ok = false
 				}
 			}
