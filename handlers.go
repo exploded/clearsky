@@ -99,7 +99,7 @@ func (a *App) Routes() http.Handler {
 	}
 
 	mux.HandleFunc("GET /img/{source}", a.proxy.handle)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /{$}", a.handleIndex)
 	mux.HandleFunc("GET /api/tonight", a.handleAPITonight)
 	mux.HandleFunc("GET /nights/rows", a.handleRows)
