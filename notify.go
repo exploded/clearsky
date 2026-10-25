@@ -39,14 +39,31 @@ func (m Message) Subject() string {
 	if m.Result.GO {
 		verdict = "GO"
 	}
-	return fmt.Sprintf("%s for astrophotography tonight — Donvale (%s)", verdict, m.Date.Format("2 Jan"))
+	when := "tonight"
+	if from := m.windowFrom(); from != "" {
+		when = "from " + from
+	}
+	return fmt.Sprintf("%s for astrophotography %s — Donvale (%s)", verdict, when, m.Date.Format("2 Jan"))
+}
+
+// windowFrom is the local start of a GO window that opens after dusk, or "" when the
+// session starts with darkness. "GO tonight" for a 01:00 window reads as "clear now",
+// and on 25 Oct 2026 it was sent into a downpour the forecast had predicted.
+func (m Message) windowFrom() string {
+	w := m.Result.Window
+	if !m.Result.GO || w.Hours == 0 || w.StartAt <= m.Dark.Dusk.Unix() {
+		return ""
+	}
+	return time.Unix(w.StartAt, 0).In(m.Dark.Dusk.Location()).Format("15:04")
 }
 
 // Body is the plaintext / lightly-marked-up message shared by all channels.
 func (m Message) Body() string {
 	var b strings.Builder
 	head := "🔭 GO tonight"
-	if !m.Result.GO {
+	if from := m.windowFrom(); from != "" {
+		head = "🔭 GO from " + from
+	} else if !m.Result.GO {
 		head = "☁️ NO-GO tonight"
 	}
 	fmt.Fprintf(&b, "%s — Donvale (%s)   Score %d/100.  [%s]\n",
@@ -72,11 +89,8 @@ func (m Message) Body() string {
 	fmt.Fprintf(&b, "Darkness:  dusk %s → dawn %s (%s %s dark)\n",
 		m.Dark.Dusk.Format("15:04"), m.Dark.Dawn.Format("Mon 15:04"),
 		humanDur(dur), m.Dark.Kind)
-	fmt.Fprintf(&b, "Cloud:     whole night avg %d%%, peak %d%% at %s (low %d%%, mid %d%%, high %d%%)\n",
-		m.Result.Cloud.Avg, m.Result.Cloud.Max, m.Result.Cloud.PeakAt,
-		m.Result.Cloud.MaxLow, m.Result.Cloud.MaxMid, m.Result.Cloud.MaxHigh)
-	fmt.Fprintf(&b, "Rain:      %.1f mm, max prob %d%%%s\n",
-		m.Result.Rain.TotalMm, m.Result.Rain.MaxProbPct, packUpNote(m.Result.Rain))
+	fmt.Fprintf(&b, "Cloud:     %s\n", cloudLine(m.Result.Cloud, w))
+	fmt.Fprintf(&b, "Rain:      %s\n", rainLine(m.Result.Rain, w))
 	fmt.Fprintf(&b, "Moon:      %.0f%% (%s)%s\n",
 		m.Moon.IllumPct, m.Moon.PhaseName, moonTimes(m.Moon))
 	fmt.Fprintf(&b, "           %s   (info only — never affects the decision)\n", m.Moon.Note())
@@ -150,6 +164,36 @@ func (f FailureMessage) degradedBody() string {
 		fmt.Fprintf(&b, "The row is flagged as degraded at %s.\n", f.BaseURL)
 	}
 	return b.String()
+}
+
+// cloudLine summarises the whole night's cloud. When the peak falls outside the usable
+// window it says so — a 100% peak beside a GO otherwise reads as a contradiction.
+func cloudLine(c CloudSummary, w WindowSummary) string {
+	layers := fmt.Sprintf("(low %d%%, mid %d%%, high %d%%)", c.MaxLow, c.MaxMid, c.MaxHigh)
+	// The window's peak is its cloudiest hour, so a higher night peak lies outside it.
+	if w.Hours > 0 && c.Max > w.MaxCloud {
+		return fmt.Sprintf("peak %d%% at %s, outside the window %s; whole night avg %d%%",
+			c.Max, c.PeakAt, layers, c.Avg)
+	}
+	return fmt.Sprintf("whole night avg %d%%, peak %d%% at %s %s", c.Avg, c.Max, c.PeakAt, layers)
+}
+
+// rainLine puts the night's rain in time relative to the usable window. The totals
+// cover the whole night, so on their own they cannot tell "raining at 21:00" from
+// "raining during the session".
+func rainLine(r RainSummary, w WindowSummary) string {
+	if w.Hours == 0 {
+		return fmt.Sprintf("%.1f mm, max prob %d%%%s", r.TotalMm, r.MaxProbPct, packUpNote(r))
+	}
+	s := "no rain forecast " + w.Label
+	if r.WindowMm > 0 {
+		s = fmt.Sprintf("%.1f mm in the window %s", r.WindowMm, w.Label)
+	}
+	if r.ClearsAt != "" {
+		s += ", earlier rain clears by " + r.ClearsAt
+	}
+	return fmt.Sprintf("%s (%.1f mm overnight, max prob %d%%)%s",
+		s, r.TotalMm, r.MaxProbPct, packUpNote(r))
 }
 
 func packUpNote(r RainSummary) string {

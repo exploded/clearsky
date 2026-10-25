@@ -33,6 +33,8 @@ type RainSummary struct {
 	AnyHour    bool    `json:"anyHour"`  // any hour of the night breached a rain veto
 	At         string  `json:"at"`       // local HH:MM of the worst rain hour ("" if none)
 	PackUpAt   string  `json:"packUpAt"` // local HH:MM rain arrives after the usable window ("" if none)
+	ClearsAt   string  `json:"clearsAt"` // local HH:MM rain stops before the usable window ("" if none)
+	WindowMm   float64 `json:"windowMm"` // precip inside the usable window (traces the per-hour gate let through)
 }
 
 // WindowSummary is the longest contiguous run of dark hours that each pass the
@@ -80,6 +82,8 @@ func Evaluate(hours []HourlyPoint, dark Darkness, th Thresholds) Result {
 	cloud, rain := summarize(hours, th)
 	win, winHours := bestWindow(hours, dark, th)
 	rain.PackUpAt = packUpAt(hours, winHours, th)
+	rain.ClearsAt = clearsAt(hours, winHours, th)
+	rain.WindowMm = totalMm(winHours)
 
 	res := Result{
 		Score:  windowScore(win, len(hours)),
@@ -260,6 +264,25 @@ func packUpAt(all, win []HourlyPoint, th Thresholds) string {
 		}
 	}
 	return ""
+}
+
+// clearsAt finds when the last raining hour before the usable window ends. A GO for a
+// window after a wet evening has to say the rain is expected — on 25 Oct 2026 an alert
+// for 01:00 arrived while it poured, reporting "max prob 100%" with no time attached.
+func clearsAt(all, win []HourlyPoint, th Thresholds) string {
+	if len(win) == 0 {
+		return ""
+	}
+	var last time.Time
+	for _, h := range all {
+		if h.At.Before(win[0].At) && hourRains(h, th) {
+			last = h.At
+		}
+	}
+	if last.IsZero() {
+		return ""
+	}
+	return last.Add(time.Hour).Format("15:04")
 }
 
 // summarize reduces the whole dark window to cloud + rain summaries. These are

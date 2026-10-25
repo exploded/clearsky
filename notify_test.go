@@ -92,3 +92,56 @@ func TestNotifierDisabled(t *testing.T) {
 	}
 	n.Notify(context.Background(), sampleMessage(t, true)) // must be a no-op, no panic
 }
+
+// Regression for 25 Oct 2026: rain until midnight, clear from 01:00. The GO was right,
+// but "GO tonight … Rain: 1.0 mm, max prob 100%" arrived during the predicted downpour
+// and read as a forecast of clear sky now. The alert must name the start time and put
+// the rain before the window.
+func TestMessageGOAfterWetEvening(t *testing.T) {
+	var hours []HourlyPoint
+	for h := 19; h <= 23; h++ {
+		hours = append(hours, hp(h, 100, 100, 100, 0, 90, 0.3))
+	}
+	hours = append(hours, hp(0, 60, 60, 0, 0, 10, 0))
+	hours = append(hours, run(1, 10, 5, 8, 12, 20)...)
+
+	dark := testDark()
+	res := Evaluate(hours, dark, defaultThresholds())
+	if !res.GO {
+		t.Fatalf("want GO, got NO-GO: %s", res.Reason)
+	}
+	if res.Rain.ClearsAt != "00:00" {
+		t.Errorf("ClearsAt = %q, want 00:00", res.Rain.ClearsAt)
+	}
+
+	m := Message{Date: time.Date(2026, 7, 1, 0, 0, 0, 0, testLoc), Source: "ecmwf+gfs+icon",
+		Result: res, Dark: dark}
+	if sub := m.Subject(); !strings.Contains(sub, "GO for astrophotography from 01:00") {
+		t.Errorf("subject: %q", sub)
+	}
+	body := m.Body()
+	for _, want := range []string{"🔭 GO from 01:00 —",
+		"Cloud:     peak 100% at 19:00, outside the window",
+		"Rain:      no rain forecast 01:00→05:50, earlier rain clears by 00:00 (1.5 mm overnight"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q\n---\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "GO tonight") {
+		t.Errorf("a window that opens after dusk must not be headlined \"GO tonight\"\n---\n%s", body)
+	}
+}
+
+// A window that opens at dusk is still "tonight".
+func TestMessageGOFromDuskSaysTonight(t *testing.T) {
+	dark := testDark()
+	res := Evaluate(run(19, 5, 5, 5, 5, 5, 5), dark, defaultThresholds())
+	m := Message{Date: time.Date(2026, 7, 1, 0, 0, 0, 0, testLoc), Result: res, Dark: dark}
+	if body := m.Body(); !strings.Contains(body, "🔭 GO tonight") ||
+		!strings.Contains(body, "no rain forecast 19:02→01:00 (0.0 mm overnight") {
+		t.Errorf("body:\n%s", body)
+	}
+	if sub := m.Subject(); !strings.Contains(sub, "GO for astrophotography tonight") {
+		t.Errorf("subject: %q", sub)
+	}
+}
