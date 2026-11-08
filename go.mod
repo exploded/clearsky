@@ -2,20 +2,22 @@ module clearsky
 
 go 1.26.4
 
+toolchain go1.27.3
+
 require (
-	github.com/exploded/monitor v0.0.0-20260902040945-7be48f0fc28e
+	github.com/exploded/monitor v0.0.0-20261108023952-ef2e555e9003
 	github.com/kixorz/suncalc v1.0.0
-	modernc.org/sqlite v1.53.0
+	modernc.org/sqlite v1.62.0
 )
 
 require (
-	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	golang.org/x/sys v0.44.0 // indirect
-	modernc.org/libc v1.73.4 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
+	modernc.org/memory v1.12.1 // indirect
 )
