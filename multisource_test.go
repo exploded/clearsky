@@ -198,8 +198,14 @@ func TestMultiSourceQuorum(t *testing.T) {
 	gfs := stubSource{name: "gfs", err: errors.New("503")}
 	icon := stubSource{name: "icon", hours: hours}
 
-	if _, err := NewMultiSource(th, ecmwf, gfs, icon).Fetch(context.Background(), 0, 0); err == nil {
+	_, err := NewMultiSource(th, ecmwf, gfs, icon).Fetch(context.Background(), 0, 0)
+	if err == nil {
 		t.Fatal("1 of 3 models must not satisfy the default quorum")
+	}
+	// Per-source failures log at INFO only, so the error the scheduler finally logs at
+	// ERROR must say why each model failed, not just which.
+	if !strings.Contains(err.Error(), "ecmwf: 503") || !strings.Contains(err.Error(), "gfs: 503") {
+		t.Errorf("quorum error should carry each source's reason: %v", err)
 	}
 	// Two of three is still short of the quorum — the merge is only a cross-check if
 	// everything configured to disagree got the chance to.
@@ -207,8 +213,8 @@ func TestMultiSourceQuorum(t *testing.T) {
 		t.Error("2 of 3 models must not satisfy the default quorum")
 	}
 	// All sources down -> error, naming them.
-	_, err := NewMultiSource(th, ecmwf, gfs).Fetch(context.Background(), 0, 0)
-	if err == nil || !strings.Contains(err.Error(), "all sources failed") {
+	_, err = NewMultiSource(th, ecmwf, gfs).Fetch(context.Background(), 0, 0)
+	if err == nil || !strings.Contains(err.Error(), "all sources failed") || !strings.Contains(err.Error(), "gfs: 503") {
 		t.Errorf("expected an all-failed error, got %v", err)
 	}
 }

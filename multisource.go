@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 )
 
 // MultiSource fetches several providers and merges them by a per-hour VOTE: an hour is
@@ -95,26 +96,32 @@ func (m *MultiSource) Fetch(ctx context.Context, lat, lon float64) (Forecast, er
 		<-done
 	}
 
+	// A source failure is logged at INFO, not WARN: the scheduler retries the whole run,
+	// and only a night that never gets a full answer is worth an alert (it logs that at
+	// ERROR). Each source's reason travels in the returned error instead, so the final
+	// ERROR still says why every model failed.
 	var ok []Forecast
-	var failed []string
+	var failed, reasons []string
 	for i, r := range results {
 		if r.err != nil {
-			slog.Warn("source failed in agreement fetch", "source", m.sources[i].Name(), "err", r.err)
-			failed = append(failed, m.sources[i].Name())
+			name := m.sources[i].Name()
+			slog.Info("source failed in agreement fetch", "source", name, "err", r.err)
+			failed = append(failed, name)
+			reasons = append(reasons, name+": "+r.err.Error())
 			continue
 		}
 		ok = append(ok, r.fc)
 	}
 
 	if len(ok) == 0 {
-		return Forecast{}, fmt.Errorf("all sources failed: %v", failed)
+		return Forecast{}, fmt.Errorf("all sources failed: %v; %s", failed, strings.Join(reasons, "; "))
 	}
 	if len(ok) < m.min {
 		// Not an outage the caller can paper over: the decision this would produce is
 		// weaker than the one it is configured to make. Report it as a failure so the
 		// retry ladder gets a turn.
-		return Forecast{}, fmt.Errorf("only %d of %d models answered (%v failed); need %d",
-			len(ok), len(m.sources), failed, m.min)
+		return Forecast{}, fmt.Errorf("only %d of %d models answered (%v failed); need %d; %s",
+			len(ok), len(m.sources), failed, m.min, strings.Join(reasons, "; "))
 	}
 
 	fc := ok[0]

@@ -22,6 +22,8 @@ type OpenMeteo struct {
 	model   string // Open-Meteo `models=` value; "" leaves them to pick (best_match)
 	name    string // provider name recorded against the night
 	baseURL string // overridden in tests; empty means the real API
+
+	retryWait time.Duration // pause before retrying a request that got no response
 }
 
 // NewOpenMeteo builds a client against Open-Meteo's own best_match blend. tz is the
@@ -29,8 +31,9 @@ type OpenMeteo struct {
 // timestamps to it.
 func NewOpenMeteo(tz string) *OpenMeteo {
 	return &OpenMeteo{
-		client: &http.Client{Timeout: 15 * time.Second},
-		tz:     tz,
+		client:    &http.Client{Timeout: 15 * time.Second},
+		tz:        tz,
+		retryWait: transportRetryWait,
 	}
 }
 
@@ -44,10 +47,11 @@ func NewOpenMeteo(tz string) *OpenMeteo {
 // sources actually independent.
 func NewOpenMeteoModel(tz, model, name string) *OpenMeteo {
 	return &OpenMeteo{
-		client: &http.Client{Timeout: 15 * time.Second},
-		tz:     tz,
-		model:  model,
-		name:   name,
+		client:    &http.Client{Timeout: 15 * time.Second},
+		tz:        tz,
+		model:     model,
+		name:      name,
+		retryWait: transportRetryWait,
 	}
 }
 
@@ -95,11 +99,9 @@ func (o *OpenMeteo) Fetch(ctx context.Context, lat, lon float64) (Forecast, erro
 	}
 	endpoint := base + "?" + q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return Forecast{}, err
-	}
-	resp, err := o.client.Do(req)
+	resp, err := doWithRetry(ctx, o.client, o.retryWait, func() (*http.Request, error) {
+		return http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	})
 	if err != nil {
 		return Forecast{}, fmt.Errorf("open-meteo request: %w", err)
 	}

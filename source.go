@@ -2,7 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -120,4 +124,46 @@ func (f Forecast) HoursWithin(start, end time.Time) []HourlyPoint {
 		}
 	}
 	return out
+}
+
+// transportRetryWait is how long a provider waits before its one retry of a request
+// that got no HTTP response at all.
+const transportRetryWait = 10 * time.Second
+
+// doWithRetry sends the request newReq builds and, if it fails before any HTTP response
+// arrives (TLS handshake timeout, connection reset, DNS), waits `wait` and sends it once
+// more. An HTTP error status is a response and is returned as-is: a 503 means the server
+// is up but busy, and the scheduler's minutes-long backoff is the right cure for that.
+//
+// Why: on 13 and 15 Nov 2026 all three Open-Meteo requests stalled in the TLS handshake
+// at the 18:07 fire time, hit Go's 10 s handshake timeout, and failed the whole run. The
+// scheduler's retry two minutes later succeeded both times, so nothing was lost, but each
+// blip cost a 2-minute delay and a burst of WARNs in the monitor. Nothing else on the box
+// logged a network error at those times; it was the path to Open-Meteo, and it cleared
+// within seconds.
+//
+// On a second failure the URL is dropped from the error. It repeats the query string for
+// every model and buries the reason, which is the only part worth reading.
+func doWithRetry(ctx context.Context, client *http.Client, wait time.Duration, newReq func() (*http.Request, error)) (*http.Response, error) {
+	var err error
+	for try := 1; try <= 2; try++ {
+		if try == 2 && !sleepCtx(ctx, wait) {
+			return nil, ctx.Err()
+		}
+		var req *http.Request
+		if req, err = newReq(); err != nil {
+			return nil, err
+		}
+		var resp *http.Response
+		if resp, err = client.Do(req); err == nil {
+			return resp, nil
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err() // cancelled or out of time; another try cannot help
+		}
+	}
+	if ue := (*url.Error)(nil); errors.As(err, &ue) {
+		err = fmt.Errorf("%s: %w", ue.Op, ue.Err)
+	}
+	return nil, fmt.Errorf("%w (2 tries)", err)
 }

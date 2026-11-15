@@ -54,14 +54,15 @@ type metNoResponse struct {
 
 func (m *MetNo) Fetch(ctx context.Context, lat, lon float64) (Forecast, error) {
 	endpoint := fmt.Sprintf("https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=%g&lon=%g", lat, lon)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return Forecast{}, err
-	}
-	req.Header.Set("User-Agent", m.userAgent)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := m.client.Do(req)
+	resp, err := doWithRetry(ctx, m.client, transportRetryWait, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", m.userAgent)
+		req.Header.Set("Accept", "application/json")
+		return req, nil
+	})
 	if err != nil {
 		return Forecast{}, fmt.Errorf("met.no request: %w", err)
 	}

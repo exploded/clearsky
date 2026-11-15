@@ -121,7 +121,10 @@ func (s *Scheduler) runWithRetry(ctx context.Context, date time.Time) {
 			return
 		}
 
-		slog.Warn("run failed, retrying", "date", dateKey, "attempt", attempt,
+		// INFO, not WARN: a failed attempt that a later one recovers is routine (the
+		// free APIs blip at the fire time), and WARN+ lines go to the monitor portal.
+		// Only a night the retries cannot rescue is logged as an error, in finalAttempt.
+		slog.Info("run failed, retrying", "date", dateKey, "attempt", attempt,
 			"retry_in", delay.String(), "err", err)
 		if !s.sleep(ctx, delay) {
 			return // cancelled mid-backoff
@@ -143,7 +146,7 @@ func (s *Scheduler) finalAttempt(ctx context.Context, date time.Time, dateKey st
 	res, derr := s.runner.RunDegraded(ctx, date)
 	switch {
 	case derr == nil && len(res.Missing) > 0:
-		slog.Warn("recorded a DEGRADED decision at the retry deadline", "date", dateKey,
+		slog.Error("recorded a DEGRADED decision at the retry deadline", "date", dateKey,
 			"attempts", attempts, "missing", res.Missing, "decision", decisionCode(res.GO),
 			"err", lastErr)
 		s.notifier.NotifyFailure(ctx, FailureMessage{

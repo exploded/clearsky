@@ -135,6 +135,13 @@ templates/ static/ migrations/ queries/ store/
   *today*. The forecast APIs serve the present forward, so re-running an older date
   returns no hours inside that night's darkness window and would persist a fabricated
   "no usable hours" NO-GO for a night nobody observed. A missing row is the honest record.
+- **Transport errors are retried once inside the fetch; recovered failures log at INFO.**
+  On 13 and 15 Nov 2026, all three Open-Meteo requests hit TLS handshake timeouts at
+  18:07, and nothing else on the box had network errors. `doWithRetry` (source.go) retries
+  a request that got no HTTP response once, 10 s later. HTTP statuses such as 503 go to
+  the scheduler's backoff. Per-source and per-attempt failures log at INFO, because WARN
+  and above ship to the monitor. ERROR is only for a night the retries can't rescue
+  (degraded or given up), and that error carries each source's reason.
 - **Log what the provider actually said.** Non-200s carry a `bodySnippet` of the response
   body (Open-Meteo answers `{"error":true,"reason":…}`). The bare `open-meteo status 503`
   the app used to log cost days of guesswork.
